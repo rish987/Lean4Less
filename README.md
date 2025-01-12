@@ -4,16 +4,18 @@ Lean4Less is a tool for translating Lean to smaller theories (generically referr
 
 The purpose of Lean4Less is to help ease the translation of proofs from Lean to other systems (e.g. Coq), but it can hopefully also be extended to enable some limited form of (simulated) extensional reasoning in Lean, as it implements a translation framework consistent with a general extensional to intensional translation (formalized by Winterhalter et. al. in [ett-to-itt](https://github.com/TheoWinterhalter/ett-to-itt), see [this related paper](https://dl.acm.org/doi/10.1145/3293880.3294095)).
 
+(paper coming soon!)
+
 ## Overview
 
-Lean4Less is currently capable of eliminating proof irrelevance (PI) and K-like reduction (KLR) in Lean, replacing them via the use of a single proof irrelevance axiom:
+Lean4Less is currently capable of eliminating proof irrelevance (PI) and K-like reduction (KLR) in Lean via the use of a single proof irrelevance axiom:
 
 ```lean
 -- proof irrelevance, represented as an axiom
 axiom prfIrrel {P : Prop} (p q : P) : p = q
 ```
 
-To do so, it "patches" the terms to insert type casts (a.k.a. transports) using generated equality proofs to ensure that terms have the expected type in Lean- (when enforced by typing constraints or type annotation).
+To do so, it "patches" the terms to insert type casts (a.k.a. transports) using generated equality proofs to ensure that terms have the expected type in Lean- (when enforced by typing constraints or by type annotation).
 
 For instance, the following typechecks in Lean via proof irrelevance:
 ```lean
@@ -60,8 +62,8 @@ theorem eq_of_heq {A : Sort u} {a a' : A}
 theorem prfIrrelPQ {P Q : Prop} (h : P = Q)
   (p : P) (q : Q) : HEq p q := ...
 
-def ex2 {P : Prop} {Q : P → Prop} {T : (p : P) → Q p → Prop}
-   (p q : p) (Qp : Q p) (Qq : Q q) (t : T p Qp) : T q Qq :=
+def ex2' {P : Prop} {Q : P → Prop} {T : (p : P) → Q p → Prop}
+   (p q : P) (Qp : Q p) (Qq : Q q) (t : T p Qp) : T q Qq :=
   cast (eq_of_heq 
   (appHEq (congrArg Q (eq_of_heq (prfIrrelPQ rfl p q)))
     (fun _ _ _ => HEq.rfl)
@@ -95,11 +97,11 @@ The command line arguments are:
 * `--print` (`-p`): Print translated constant specified by --only.
 * `--cached` (`-c`): Use cached library translation files from specified directory.
 
-If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of a `PatchPrelude.olean` module to isolate the dependencies of the [translation-specific lemmas](patch/PatchTheorems.lean).
+If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of a `PatchPrelude.olean` module isolating the [translation-specific definitions](patch/PatchTheorems.lean) and their dependencies.
 
-If you wish to continue an interrupted translation, you can use the `-c` option, (e.g. `lean4less -pi -klr Std -c out`).
+To continue an interrupted translation, you can use the `-c` option, (e.g. `lean4less -pi -klr Std -c out`).
 
-To translate a different Lean package, you should navigate the directory of the target project, then use `lake env path/to/lean4lean/.lake/build/bin/lean4less <args>` to run `lean4less` in the context of the target project, for example:
+To translate a different Lean package, navigate the directory of the target project, then use `lake env path/to/lean4lean/.lake/build/bin/lean4less <args>` to run `lean4less` in the context of the target project, for example:
 ```
  $ (cd ~/projects/mathlib4/ && lake env ~/projects/lean4less/.lake/build/bin/lean4less -klr -pi Mathlib.Data.Real.Basic)
 ```
