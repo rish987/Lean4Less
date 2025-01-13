@@ -104,7 +104,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
           let mut env := env
           for (_, c) in lemmEnv.constants do
             env := add' env c
-          _ ← Lean4Less.checkL4L (onlyConsts.map (·.toName)) env (printProgress := true) (printOutput := p.hasFlag "print") (opts := opts) (dbgOnly := dbgOnly)
+          _ ← Lean4Less.checkL4L (onlyConsts.map (·.toName)) env (printProgress := true) (printOutput := p.hasFlag "print") (opts := opts) (dbgOnly := dbgOnly) (deps := not dbgOnly)
       else
         let outDir := ((← IO.Process.getCurrentDir).join "out")
         let abortedFile := outDir.join "aborted.txt"

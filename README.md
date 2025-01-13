@@ -99,6 +99,19 @@ The command line arguments are:
 
 If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of a `PatchPrelude.olean` module isolating the [translation-specific definitions](patch/PatchTheorems.lean) and their dependencies.
 
+
+You can run the executable using `lake exe`. For instance, to translate the standard library to Lean-, run:
+```
+ $ lake exe lean4less -pi -klr Std
+```
+The translation will be output to an `out/` directory, which will also contain an `aborted.txt` file containing a list of constants whose translation was aborted (see caveats section below).
+
+To translate only the definition `Classical.em` and see its translation, run:
+```
+ $ lake exe lean4less Std -klr -pi --only Classical.em --print
+```
+which will create the file `only_out/Classical.em.olean`.
+
 To continue an interrupted translation, you can use the `-c` option, (e.g. `lean4less -pi -klr Std -c out`).
 
 To translate a different Lean package, navigate the directory of the target project, then use `lake env path/to/lean4lean/.lake/build/bin/lean4less <args>` to run `lean4less` in the context of the target project, for example:
