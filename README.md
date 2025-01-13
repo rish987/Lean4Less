@@ -97,7 +97,7 @@ The command line arguments are:
 * `--print` (`-p`): Print translated constant specified by --only.
 * `--cached` (`-c`): Use cached library translation files from specified directory.
 
-If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of a `PatchPrelude.olean` module isolating the [translation-specific definitions](patch/PatchTheorems.lean) and their dependencies.
+If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of an `Init.PatchPrelude` module (imported by `Init.Prelude`) isolating the [translation-specific definitions](patch/PatchTheorems.lean) and their dependencies.
 
 
 You can run the executable using `lake exe`. For instance, to translate the standard library to Lean-, run:
