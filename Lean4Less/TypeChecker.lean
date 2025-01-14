@@ -1253,10 +1253,10 @@ def maybeCast (n : Nat) (p? : Option EExpr) (typLhs typRhs e : PExpr) : RecM PEx
 
 def isDefEqProofIrrel' (t s tType sType : PExpr) (pt? : Option EExpr) (n : Nat) (useRfl := false) : RecM (Option EExpr) := do
   if ← isDefEqPure (2000 + n) t s 15 then -- limit maximum recursion depth to 15 to avoid incurring worst-case runtime
-    -- if useRfl then
-    --   let p := .refl {u := 0, A := tType, a := t, n := 50}
-    --   return .some p
-    -- else
+    if useRfl then
+      let p := .refl {u := 0, A := tType, a := t, n := 50}
+      return .some p
+    else
     return none
   else
     let p ← if let some pt := pt? then
@@ -1270,7 +1270,7 @@ def methsR : ExtMethodsR RecM := {
     smartCast := smartCast'
     maybeCast := maybeCast
     isDefEqApp' := fun t s m => isDefEqApp' t s (targsEqsargs? := m)
-    isDefEqProofIrrel' := isDefEqProofIrrel' (n := 2) (useRfl := true) -- TODO don't need `useRfl` anymore?
+    isDefEqProofIrrel' := isDefEqProofIrrel' (n := 2) (useRfl := true) -- need to use `useRfl` because of the lack of transitivity
   }
 
 /--

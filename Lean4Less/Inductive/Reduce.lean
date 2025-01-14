@@ -50,9 +50,17 @@ def toCtorWhenK (rval : RecursorVal) (e : PExpr) : m (PExpr × Option (EExpr)) :
   let (true, pt?) ← meth.isDefEq 105 type appType | return (e, none)
   let prf? ←
     if (← readThe Context).opts.kLikeReduction || pt?.isSome then
-      -- TODO TODO TODO make sure that proof irrelevance is defined as a theorem if opts.proofIrrelevance = false
-      let ret ← meth.isDefEqProofIrrel' e newCtorApp type appType pt?
-      pure ret
+      let elsecase := do
+        let ret ← meth.isDefEqProofIrrel' e newCtorApp type appType pt?
+        pure ret
+      if let (.const ctorName _) := e.toExpr.getAppFn then
+        if ctorName == newCtorName then
+          pure none -- OK because of restrictions on the typing of K-like inductive constructors (i.e., ctor args must be indices)
+        else
+          elsecase -- should never actually happen since we're already WHNF, right?
+      else
+        -- TODO TODO TODO make sure that proof irrelevance is defined as a theorem if opts.proofIrrelevance = false
+        elsecase
     else
       pure none
 

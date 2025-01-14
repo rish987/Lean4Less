@@ -157,10 +157,12 @@ structure S where
 structure S' where
   s : S
 
-theorem ex1 : @Eq.rec S s (fun _ _ => Bool) true s (Eq.refl s) = true := rfl
+theorem ex1 : k = K.mk := rfl
 #check_off tmp.ex1
--- theorem ex2 : @K.rec s (fun _ => Bool) true (K.mk (S.mk s.x s.y s.z)) = true := rfl
--- #check_off tmp.ex2
+theorem ex2 : @K.rec (fun _ => Bool) true K.mk = true := rfl
+#check_off tmp.ex2
+theorem ex3 : @K.rec (fun _ => Bool) true k = true := rfl
+#check_off tmp.ex3 -- Error
 
 end tmp
 
