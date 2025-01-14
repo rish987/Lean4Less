@@ -159,9 +159,9 @@ def numCalls : RecM Nat := do
 def mkIdNew (n : Nat) : RecM Name := do
   let nid := (← get).nid
   let fid := .mkNum `_kernel_fresh nid
-  for id in (← readThe Context).dbgFIds do
-    if id == fid then
-      dbg_trace s!"DBG[1]: TypeChecker.lean:191 {fid}, {n}"
+  -- for id in (← readThe Context).dbgFIds do
+  --   if id == fid then
+  --     dbg_trace s!"DBG[1]: TypeChecker.lean:191 {fid}, {n}"
   modify fun st => { st with nid := st.nid + 1, fvarRegistry := st.fvarRegistry.insert fid n}
   pure fid
 
@@ -574,8 +574,8 @@ def mkLetE (t s : PExpr) (p : EExpr) (n := 0) : RecM (EExpr × LocalDeclE × Opt
   --       dbg_trace s!"DBG[72]: TypeChecker.lean:592 {(newi, origi)}"
   if let some (lastVar, _) := lastVar? then
     modify fun st => { st with letsToBindVar := st.letsToBindVar.insert (.mk decl.fvarId.name) (st.letsToBindVar.get? lastVar |>.getD lastVar)}
-  if (← readThe Context).dbgFIds.size > 0 && decl.fvarId.name == (← readThe Context).dbgFIds[0]! then
-    dbg_trace s!"DBG[2]: TypeChecker.lean:544 {(← get).letsToBindVar.get? decl.fvarId |>.map (·.name)}"
+  -- if (← readThe Context).dbgFIds.size > 0 && decl.fvarId.name == (← readThe Context).dbgFIds[0]! then
+  --   dbg_trace s!"DBG[2]: TypeChecker.lean:544 {(← get).letsToBindVar.get? decl.fvarId |>.map (·.name)}"
 
   addLVarToCtx decl (lastVar?.map (·.1)) (lastVar?.map (·.2))
   let lv := .lvar {A, B, a := t, b := s, u, v := decl.fvarId}
@@ -866,9 +866,7 @@ def isDefEqLambda (t s : PExpr) : RecB := do
     | tBody, sBody =>
       pure (#[], tBody.toPExpr, sBody.toPExpr)
   let (datas, tBody, sBody) ← getData t.toExpr s.toExpr
-  ttrace s!"DBG[11]: TypeChecker.lean:1579 (after let (datas, tBody, sBody) ← getData t.…)"
   let ret ← isDefEqBinder datas tBody sBody fun fa' gx' faEqgb? as ds => do
-    ttrace s!"DBG[12]: TypeChecker.lean:1581 (after let ret ← isDefEqBinder datas tBody sB…)"
     let mut faEqgx? := faEqgb?
     let mut fa := fa'
     let mut gx := gx'
@@ -1119,7 +1117,6 @@ def smartCast' (n : Nat) (tl tr e : PExpr) (p? : Option EExpr := none) : RecM ((
     match remLams, e, tl, tr, p with
     | remLams' + 1, .lam nm _ b bi, .forallE _ _ tbl .., .forallE _ tdr tbr .., .forallE forallData =>
       let {A, a, extra, u, alets, ..} := forallData
-      -- ttrace s!"DBG[16]: TypeChecker.wean:953: a={a.fvarId.name}"
       withNewFVar 5 nm tdr.toPExpr bi fun var => do
         let (UaEqVx? : Option EExpr) := 
           match extra with
@@ -1256,11 +1253,11 @@ def maybeCast (n : Nat) (p? : Option EExpr) (typLhs typRhs e : PExpr) : RecM PEx
 
 def isDefEqProofIrrel' (t s tType sType : PExpr) (pt? : Option EExpr) (n : Nat) (useRfl := false) : RecM (Option EExpr) := do
   if ← isDefEqPure (2000 + n) t s 15 then -- limit maximum recursion depth to 15 to avoid incurring worst-case runtime
-    if useRfl then
-      let p := .refl {u := 0, A := tType, a := t, n := 50}
-      return .some p
-    else
-      return none
+    -- if useRfl then
+    --   let p := .refl {u := 0, A := tType, a := t, n := 50}
+    --   return .some p
+    -- else
+    return none
   else
     let p ← if let some pt := pt? then
       appPrfIrrelHEq tType sType pt t s
@@ -1273,7 +1270,7 @@ def methsR : ExtMethodsR RecM := {
     smartCast := smartCast'
     maybeCast := maybeCast
     isDefEqApp' := fun t s m => isDefEqApp' t s (targsEqsargs? := m)
-    isDefEqProofIrrel' := isDefEqProofIrrel' (n := 2) (useRfl := true) -- need to pass `useRfl := true` because of failure of transitivity (with K-like reduction)
+    isDefEqProofIrrel' := isDefEqProofIrrel' (n := 2) (useRfl := true) -- TODO don't need `useRfl` anymore?
   }
 
 /--

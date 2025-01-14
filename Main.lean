@@ -42,19 +42,30 @@ abbrev ForEachModuleM := StateRefT ForEachModuleState IO
 @[inline] nonrec def ForEachModuleM.run (env : Environment) (x : ForEachModuleM α) (s : ForEachModuleState := {env}) : IO (α × ForEachModuleState) :=
   x.run s
 
-partial def forEachModule' (f : Name → ModuleData → NameSet → ForEachModuleM NameSet) (imports : Array Import) (aborted : NameSet) : ForEachModuleM NameSet := do
-  let mut aborted := aborted
+partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × ModuleData) := do
+  let mut leafs := #[]
   for i in imports do
     if i.runtimeOnly || (← get).moduleNameSet.contains i.module then
       continue
-    modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
     let mFile ← findOLean i.module
     unless (← mFile.pathExists) do
       throw <| IO.userError s!"object file '{mFile}' of module {i.module} does not exist"
     let (mod, _) ← readModuleData mFile
-    aborted ← forEachModule' f mod.imports aborted
-    modify fun s => { s with count := s.count + 1}
-    aborted ← f i.module mod aborted
+    let modLeafs ← getLeafModules mod.imports
+    if modLeafs.size == 0 then
+      modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
+      leafs := leafs.push (i.module, mod)
+    leafs := leafs ++ modLeafs
+  pure leafs
+
+partial def forEachModule' (f : Name → ModuleData → NameSet → ForEachModuleM NameSet) (imports : Array Import) (aborted : NameSet) : ForEachModuleM NameSet := do
+  let mut aborted := aborted
+  while true do
+    let leafs ← getLeafModules imports
+    if leafs.size == 0 then break
+    for (n, m) in leafs do
+      modify fun s => { s with count := s.count + 1 }
+      aborted ← f n m aborted
   pure aborted
 
 def mkModuleData (imports : Array Import) (env : Environment) : IO ModuleData := do

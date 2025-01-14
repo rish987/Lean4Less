@@ -146,6 +146,24 @@ def nestedPrfIrrelTest : T q Qq := t
 
 inductive K : Prop where
 | mk : K
+
+namespace tmp
+
+structure S where
+  x : Nat
+  y : Nat
+  z : Nat
+
+structure S' where
+  s : S
+
+theorem ex1 : @Eq.rec S s (fun _ _ => Bool) true s (Eq.refl s) = true := rfl
+#check_off tmp.ex1
+-- theorem ex2 : @K.rec s (fun _ => Bool) true (K.mk (S.mk s.x s.y s.z)) = true := rfl
+-- #check_off tmp.ex2
+
+end tmp
+
 -- K.rec.{u}
 --   {motive : K → Sort u} 
 --   (mk : motive K.mk)
@@ -183,6 +201,7 @@ variable (x y : Nat) (hxy : x ≤ y)
 set_option pp.explicit true in
 -- #print Nat.gcd
 -- #reduce (proofs := true) my_eq_or_lt_of_le hxy
+-- def ktest : (@K.rec (fun _ => Bool) true k) = 
 
 axiom k : K 
 axiom k' : K 
