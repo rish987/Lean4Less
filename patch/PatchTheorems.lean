@@ -113,6 +113,11 @@ theorem lambdaHEqABUV {A B : Sort u} {U V : Sort v}
   : HEq (fun a => f a) (fun b => g b) := by
   apply lambdaHEqABUV' _ _ hAB hfg
 
+theorem lambdaHEqAB {A B : Sort u} {U : Sort v}
+  (f : U) (hAB : HEq A B)
+  : HEq (fun (_ : A) => f) (fun (_ : B) => f) := by
+  apply lambdaHEqABUV _ _ hAB (fun _ _ _ => HEq.rfl)
+
 theorem lambdaHEqUV' {A : Sort u} {U V : A → Sort v}
   {f : (a : A) → U a} {g : (b : A) → V b}
   (hfg : (a : A) → HEq (f a) (g a))

@@ -24,7 +24,7 @@ def forallEx : Q q → Q q := fun (qp : Q p) => X p qp
 --   fun (qq : Q q) => @L4L.castHEq (Q p) (Q q) (@L4L.appArgHEq P Prop Q p q (L4L.prfIrrel p q))
 --                       (X p (@L4L.castHEq (Q q) (Q p) (@L4L.appArgHEq P Prop Q q p (L4L.prfIrrel q p)) qq)) 
 -- #check_off forallEx''
-set_option pp.all true
+-- set_option pp.all true
 -- #print Std.Tactic.BVDecide.BVExpr.bitblast.go
 -- #check_only Std.Sat.AIG.toCNF.State.addGate
 
@@ -72,10 +72,9 @@ theorem eq_of_heq' {A : Sort u} {a a' : A} (h : HEq a a') : Eq a a' :=
 -- #check_l4l eq_of_heq'
 
 namespace Demo
-axiom A : P → Nat → Nat → Nat → Nat → Nat → Nat → Prop
-axiom Aq : A q 0 0 0 0 0 0
+variable (A : P → Nat → Nat → Nat → Nat → Nat → Nat → Prop)
 
-theorem absDemoA : A p 0 0 0 0 0 0 := Aq
+theorem absDemoA (Aq : A q 0 0 0 0 0 0) : A p 0 0 0 0 0 0 := Aq
 
 inductive I : Type where
 | left  : P → I
@@ -147,22 +146,125 @@ def nestedPrfIrrelTest : T q Qq := t
 inductive K : Prop where
 | mk : K
 
+namespace auxdefs
+
+inductive X : Nat → Type where
+| l (n : Nat) : X n
+| r (n : Nat) : X n
+
+inductive E : Type where
+| a : E
+| b : E
+
+inductive T : Nat → Nat → Prop where
+| mk : (n : Nat) → T n n
+
+#print T.rec
+/-
+T.rec.{u} : {n : Nat} →
+  {C : (n' : Nat) → T n n' → Sort u} →
+    C n (T.mk n) → {n' : Nat} → (t : T n n') →
+      C n' t
+-/
+
+def x : Nat := sorry
+
+abbrev C := fun m => (n : Nat) → T n (n + m)
+
+noncomputable def f (m : Nat) (c : C m) (i : X m) : E → X m
+| .a => @T.rec x (fun _ _ => X m) i (x + m) (c x)
+| .b => .r m
+
+noncomputable def fp (c : C 0) : f 0 c (.l 0) .a = .l 0 := rfl
+noncomputable def fpTrans1 (c : C 0) : f 0 c (.l 0) .a = .l 0 :=
+  L4L.castHEq
+    (L4L.appArgHEq (Eq (f 0 c (.l 0) .a))
+      -- proof that `@T.rec x (fun _ _ => E) (.c 0) (x + 0) (c x) = .c 0` by KLR
+      -- (i.e., `f 0 c .a = .a`)
+      (L4L.appArgHEq (@T.rec _ (fun _ _ => X 0) (.l 0) _) (L4L.prfIrrelHEq (c x) (.mk x))))
+    rfl
+
+def T.rec_aux {n : Nat} 
+  {M : (m : Nat) → T n m → Sort u} 
+    (mtv : M n (T.mk n)) {m : Nat} (t : T n m) (p : n = m) :
+      HEq (@T.rec n M mtv m t) mtv
+  := by subst p; rfl
+
+noncomputable def f_aux (m : Nat) (c : C m) (e : E) (i : X m) (p_m : HEq m 0) (p_e : HEq e E.a) : HEq (f m c i e) i :=
+  -- need to cast WP dependencies
+  let c' := @cast (C m) (C 0) sorry c
+  let i' := @cast (X m) (X 0) sorry i
+
+  let p := HEq.trans (a := f m c i e) (b := (f 0 c' i' E.a)) (c := i') sorry (@T.rec_aux x (fun _ _ => X 0) i' (m := x) (c' x) (by subst p_m; rfl))
+
+  sorry
+--
+-- noncomputable def fpTrans2 (n : Nat) (p : n = 0) (c : C n) (i : X n) : f n c i .a = i :=
+--   L4L.castHEq
+--     (L4L.appArgHEq' (Eq (f n c .a))
+--       (f_aux n c .a p rfl))
+--     rfl
+--
+-- def T.rec_aux' {n : Nat} 
+--   {M : (m : Nat) → T n m → Sort u} 
+--     (mtv : M n (T.mk n)) (t : T n n):
+--       HEq (@T.rec n M mtv n t) mtv
+--   := by rfl
+--
+-- noncomputable def f_aux' (c : C 0) : HEq (f 0 c E.a) E.a :=
+--   @T.rec_aux' x (fun _ _ => E) .a (c x)
+--
+-- noncomputable def fpTrans2' (c : C 0) : f 0 c .a = .a :=
+--   L4L.castHEq
+--     (L4L.appArgHEq' (Eq (f 0 c .a))
+--       (f_aux' c))
+--     rfl
+
+-- inductive H
+-- | l : E → Nat → H
+-- | r : H
+--
+-- noncomputable def g (m : Nat) (c : C m) : H → E
+-- | .l e n => @T.rec n (fun _ _ => E) (f m c e) n (T.mk n)
+-- | .r => .b
+--
+-- noncomputable def ug : E := g 0 T.mk (.l .a 0)
+
+end auxdefs
+
 namespace tmp
 
-structure S where
-  x : Nat
-  y : Nat
-  z : Nat
+axiom P : Prop
+inductive T : (p : P) → Type where
+| mk (p : P) : T p
+-- needed so that T isn't a struct (and doesn't use struct-like reduction)
+| extra (p : P) : T p
 
-structure S' where
-  s : S
+#print T.rec
+-- T.rec.{u} {p : P} {motive : tmp.T p → Sort u}
+--   (mk : (p_1 : P) → motive (@tmp.T.mk p p_1)) (t : tmp.T p) : motive t
 
-theorem ex1 : k = K.mk := rfl
-#check_off tmp.ex1
-theorem ex2 : @K.rec (fun _ => Bool) true K.mk = true := rfl
+def castEx (p q : P) :
+  @T.rec p (fun _ => Bool) true true
+    (@cast (T q) (T p) (congrArg T (L4L.prfIrrel q p)) (.mk q))
+  = true
+   := rfl
+
+-- TODO ask mario about this
+-- example {P Q : Prop} (p : P) (q : Q) (h : And P Q) :
+--   @And.rec P Q (fun _ => Bool) (fun _ _ => true) (And.intro p q) -- reduces to `true`
+--     =
+--   @And.rec P Q (fun _ => Bool) (fun _ _ => true) h -- cannot reduce (`And` is not K-like or struct-like)
+--   := rfl --fails
+axiom h : And P P
+#reduce @And.rec P P (fun _ => Bool) (fun _ _ => true) h
+
+example : k = K.mk := rfl
+example : @K.rec (fun _ => Bool) true k = @K.rec (fun _ => Bool) true K.mk := rfl
+example : @K.rec (fun _ => Bool) true K.mk = true := rfl
+-- not OK in Lean-
+theorem ex4 : @K.rec (fun _ => Bool) true k = true := rfl
 #check_off tmp.ex2
-theorem ex3 : @K.rec (fun _ => Bool) true k = true := rfl
-#check_off tmp.ex3 -- Error
 
 end tmp
 
@@ -333,12 +435,13 @@ axiom ty : Ty
 axiom L : (p : P) → ((q : Q p) → Q p) → Type
 axiom l : L q fun qq : Q q => qq
 
-axiom M1 : {P : Prop} → P → Type
-axiom M2 : {P Q : Prop} → P → Q → Type
+noncomputable def lamTest : L p fun qp : Q p => qp := l
+-- #check_l4l lamTest
 
 axiom L' : (P Q : Prop) → ((p : P) → (q : Q) → Type) → Type
 
-noncomputable def lamTest : L p fun qp : Q p => qp := l
+axiom M1 : {P : Prop} → P → Type
+axiom M2 : {P Q : Prop} → P → Q → Type
 
 axiom l1 : L' (Q q) (Q q) fun _qq qq' : Q q => M1 qq'
 axiom l2 : L' (Q q) (Q q) fun qq qq' : Q q => M2 qq qq'
@@ -372,14 +475,15 @@ set_option pp.explicit true
 -- end
 
 axiom G : P → Prop
-axiom H : (p : P) → G p → Type
-axiom Hq : G q → Type
-axiom H.mk : (p : P) → (g : G p) → H p g
-axiom gq : G q
-axiom gp : G p
+inductive H : (p : P) → G p → Type where
+| mk (p : P) (g : G p) : H p g
 
 noncomputable def pushTest : (g : G q) → H q g := fun (g : G p) => H.mk p g
+#check_l4l pushTest
 noncomputable def pushTestIdem : (g : G q) → G q := fun (g : G p) => g
+#check_l4l pushTestIdem
+
+axiom Hq : G q → Type
 noncomputable def pushTestIdemApp : (g : G q) → Type := fun (g : G p) => Hq g
 -- #check_l4l pushTestIdem
 

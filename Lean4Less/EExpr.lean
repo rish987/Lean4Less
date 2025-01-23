@@ -49,7 +49,7 @@ instance : Coe (Array LocalDeclE) FVarIdSet where
 coe ls := ls.foldl (init := default) fun acc l => acc.union l.usedLets
 
 /--
-Tracks fvars for an equality in both directions (useful when reversing equalities).
+Tracks fvars for an equality in both directions.
 -/
 structure FVarDataE where
 A : PExpr
@@ -58,7 +58,7 @@ a : PExpr
 b : PExpr
 u : Level
 aEqb : LocalDecl
-bEqa : LocalDecl
+bEqa : LocalDecl -- used in equality reversal
 usedLets : FVarIdSet := FVarIdSet.insert default aEqb
 deriving Inhabited
 

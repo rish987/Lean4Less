@@ -48,6 +48,9 @@ def toCtorWhenK (rval : RecursorVal) (e : PExpr) : m (PExpr × Option (EExpr)) :
   let appType ← meth.inferTypePure 104 newCtorApp
   -- check that the indices of types of `e` and `newCtorApp` match
   let (true, pt?) ← meth.isDefEq 105 type appType | return (e, none)
+  if pt?.isSome then
+    if not (← meth.isDefEqPure 0 type appType) then
+      dbg_trace s!"DBG[1]: Reduce.lean:50 \n{e}\n\n{newCtorApp}"
   let prf? ←
     if (← readThe Context).opts.kLikeReduction || pt?.isSome then
       let elsecase := do

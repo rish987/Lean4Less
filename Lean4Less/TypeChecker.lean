@@ -2068,24 +2068,21 @@ Checks if `t` and `s` are definitionally equivalent according to proof irrelevan
 (that is, they are proofs of the same proposition).
 -/
 def isDefEqProofIrrel (t s : PExpr) : RecLB := do
-  -- if ← shouldTrace then
-  --   dbg_trace s!"HERE: {t.toExpr.containsFVar' (.mk "_kernel_fresh.15280".toName)}"
-    -- let x ← withL4LTrace $ runLeanMinusRecM $ Lean.TypeChecker.inferTypeCheck t
   let tType ← inferTypePure 59 t
   let prop ← isPropPure tType
   if !prop then return (.undef, none)
   let sType ← inferTypePure 60 s
-  -- let (ret, usesPI) ← usesPrfIrrel tType sType
-  let (ret, pt?) ← isDefEq 61 tType sType
-  if ret then
-    if true then
-      let tEqs? ←
-        isDefEqProofIrrel' t s tType sType pt? 1
-      pure (.true, tEqs?)
-    else
-      pure (.true, none)
-  else
-    pure (.false, none)
+
+  let (true, pt?) ← isDefEq 61 tType sType | pure (.false, none)
+
+  let tEqs? ←
+    isDefEqProofIrrel' t s tType sType pt? 1
+    -- let p ← if let some pt := pt? then
+    --   appPrfIrrelHEq tType sType pt t s
+    -- else
+    --   appPrfIrrel tType t s
+    -- return (.some p)
+  pure (.true, tEqs?)
 
 def failedBefore (failure : Std.HashSet (Expr × Expr)) (t s : Expr) : Bool :=
   if t.hash < s.hash then
