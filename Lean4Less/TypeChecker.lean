@@ -1817,7 +1817,7 @@ def quickIsDefEq' (t s : PExpr) (useHash := false) : RecLB := do
     | (.undef, _) => pure none
     | (.true, p?) => pure (true, p?)
     | (.false, p?) => pure (false, p?)
-  | .forallE .., .forallE .. => pure $ some $ ← isDefEqForallOpt t s
+  | .forallE .., .forallE .. => pure $ some $ ← isDefEqForall t s (numBinds := 1)
   | .sort a1, .sort a2 => pure $ some $ ((a1.isEquiv a2), none)
   | .mdata _ a1, .mdata _ a2 => pure $ some $ ← isDefEq 44 a1.toPExpr a2.toPExpr
   | .mvar .., .mvar .. => throw $ .other "unreachable 6"
@@ -2121,7 +2121,7 @@ def lazyDeltaReductionStep (ltn lsn : PExpr) : RecM ReductionStatus := do
   --     throw $ .other "HERE A"
   let env ← getEnv
   let delta e := do
-    let (ne, eEqne?) ← whnfCore 63 (unfoldDefinition env e).get! (cheapK := true) (cheapProj := true)
+    let (ne, eEqne?) ← whnfCore 63 (unfoldDefinition env e).get! (cheapK := false) (cheapProj := true)
     -- if ne.toExpr.containsFVar' (.mk "_kernel_fresh.86".toName) then 
     --   dbg_trace s!"DBG[44]: TypeChecker.lean:1997 (after if ! e.toExpr.containsFVar (.mk _kernel_…)"
     --   for var in ← getLCtx do
@@ -2238,7 +2238,6 @@ Otherwise, defers to the calling function with these normal forms.
 def lazyDeltaReduction (tn sn : PExpr) : RecM ReductionStatus := loop tn sn none none 1000 where
   loop ltn lsn (tnEqltn? snEqlsn? : Option EExpr)
   | 0 =>
-    dbg_trace s!"DBG[66]: TypeChecker.lean:2241 (after | 0 =>)"
     throw .deterministicTimeout
   | fuel+1 => do
     let (r, proof?) ← isDefEqOffset ltn lsn
@@ -2270,7 +2269,6 @@ def lazyDeltaReduction (tn sn : PExpr) : RecM ReductionStatus := loop tn sn none
 
     match ← lazyDeltaReductionStep ltn lsn with
     | .continue nltn nlsn ltnEqnltn? lsnEqnlsn? =>
-
       let tnEqnltn? ← appHEqTrans? tn ltn nltn tnEqltn? ltnEqnltn?
       let snEqnlsn? ← appHEqTrans? sn lsn nlsn snEqlsn? lsnEqnlsn?
 

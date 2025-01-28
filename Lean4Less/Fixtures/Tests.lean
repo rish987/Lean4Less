@@ -234,7 +234,37 @@ end auxdefs
 
 namespace tmp
 
-axiom P : Prop
+example : k = K.mk := rfl
+example : @K.rec (fun _ => Bool) true k = @K.rec (fun _ => Bool) true K.mk := rfl
+example : @K.rec (fun _ => Bool) true K.mk = true := rfl
+theorem KEx : @K.rec (fun _ => Bool) true k = true := rfl
+#check_l4l tmp.KEx
+theorem KExEq {k : K} : HEq (@K.rec (fun _ => Bool) true k) Bool.true :=
+  L4L.appArgHEq' (@K.rec (fun _ => Bool) true) (HEq.refl k)
+
+axiom n : Nat
+axiom m : Nat
+axiom hmn : Nat.succ m = Nat.succ n
+axiom E : (Nat → I) → Prop
+theorem absDemoE : E (fun _ => .left p) = E (fun _ => .left q) := rfl
+
+theorem absDemoEEq : HEq (E fun (x : Nat) => I.left p) (E fun (x : Nat) => I.left q) :=
+  L4L.appArgHEq' E (L4L.lambdaHEq fun (x : Nat) => L4L.appArgHEq' I.left (L4L.prfIrrelHEq p q))
+
+theorem absDemoEEq' : HEq (tmp.E fun (x : Nat) => I.left p) (tmp.E fun (x : Nat) => I.left q) :=
+  L4L.appArgHEq' (fun h => tmp.E fun (x : Nat) => I.left h) (L4L.prfIrrelHEq p q)
+
+-- axiom P : Prop
+-- axiom Q : P → Prop
+-- theorem lamEqEx : ((p : P) → Q p) = ((p : P) → Q p) := rfl
+-- theorem lamEqExBadTrans : ((p : P) → Q p) = ((p : P) → Q p) :=
+--   L4L.castHEq
+--     (L4L.appArgHEq' (Eq ((p : P) → Q p))
+--       (L4L.forallHEqABUV' HEq.rfl (fun a b hab => L4L.appArgHEq' tmp.Q hab)))
+--     rfl
+
+#check_off tmp.lamEqExBadTrans
+
 inductive T : (p : P) → Type where
 | mk (p : P) : T p
 -- needed so that T isn't a struct (and doesn't use struct-like reduction)
@@ -249,6 +279,21 @@ def castEx (p q : P) :
     (@cast (T q) (T p) (congrArg T (L4L.prfIrrel q p)) (.mk q))
   = true
    := rfl
+
+theorem addComm (x y : Nat) : x + y = y + x := sorry
+--#register_eq incComm
+
+example (x y z : Nat) : x + (y + z) = x + (z + y) := sorry
+
+-- Lean's addition function matches on the second argument,
+-- so this does not hold definitionally
+theorem incEq (x : Nat) : 1 + x = Nat.succ x := sorry
+--#register_rw incEq
+
+example (x y : Nat) : y + (1 + a) = Nat.succ (y + a) := sorry
+
+--
+-- example (x : Nat) : 1 + x = Nat.succ x := rfl
 
 -- TODO ask mario about this
 -- example {P Q : Prop} (p : P) (q : Q) (h : And P Q) :
