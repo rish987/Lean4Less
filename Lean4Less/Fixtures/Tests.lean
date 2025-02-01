@@ -146,6 +146,9 @@ def nestedPrfIrrelTest : T q Qq := t
 inductive K : Prop where
 | mk : K
 
+theorem K.KLR {motive : K → Sort u} (mk : motive K.mk) (k : K)
+  : K.rec mk k = mk := @congrArg _ _ k K.mk (K.rec mk) (L4L.prfIrrel k K.mk)
+
 namespace auxdefs
 
 inductive X : Nat → Type where

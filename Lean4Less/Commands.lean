@@ -11,7 +11,7 @@ namespace Lean4Less
 def ppConst (env : Environment) (n : Name) : IO Unit := do
   let options := default
   let options := KVMap.set options `pp.proofs true
-  -- let options := KVMap.set options `pp.explicit true
+  let options := KVMap.set options `pp.explicit true
   let options := KVMap.set options `pp.funBinderTypes true
   let some info := env.find? n | unreachable!
   try

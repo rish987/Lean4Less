@@ -5,7 +5,7 @@ inductive K : Prop where
 | mk : K
 
 inductive I : Nat → Type where
-| l (n : Nat) : I n
+| l (b : Bool) (n : Nat) : I n
 | r (n : Nat) : I n
 
 inductive E : Type where
@@ -29,25 +29,25 @@ axiom y___ : Nat
 
 abbrev C := fun m => (n : Nat) → T n (n + m)
 
-noncomputable def r (m : Nat) (c : C m) (i : I m) : I m :=
-  @T.rec x___ (fun _ _ => I m) i (x___ + m) (c x___)
+noncomputable def r (m : Nat) (c : C m) (i : I m) : Bool :=
+  @T.rec x___ (fun _ _ => Bool) (i.rec (fun b _ => b) (fun _ => false)) (x___ + m) (c x___)
 
 @[reducible]
-noncomputable def g (fn : Nat → E) (m : Nat) (c : C m) (i : I m) (n : Nat) : I m :=
+noncomputable def g (fn : Nat → E) (m : Nat) (c : C m) (i : I m) (n : Nat) : Bool :=
 (fn n).rec
-  (fun _ => .r m) -- .a _ => ..
-  (@T.rec y___ (fun _ _ => I m) (r m c i) (y___ + m) (c y___)) -- .b => ..
+  (fun _ => false) -- .a _ => ..
+  (@T.rec y___ (fun _ _ => Bool) (r m c i) (y___ + m) (c y___)) -- .b => ..
 set_option pp.all true in
 
 def F : E → Type
-| .a m => (c : C m) → (i : I m) → E → I m
+| .a m => (c : C m) → (i : I m) → E → Bool
 | .b => Bool
 
 noncomputable def f (fn : Nat → E) : (e : E) → F e
 | .a m =>
   fun (c : C m) (i : I m) (e : E) => match e with
-  | .a n => m.rec (motive := fun _ => I m) (g fn m c i n) (fun _ _ => .r m)
-  | .b => .r m
+  | .a n => m.rec (motive := fun _ => Bool) (g fn m c i n) (fun _ _ => false)
+  | .b => false
 | .b => .true
 
 def fn : Nat → E
@@ -56,13 +56,14 @@ def fn : Nat → E
 
 noncomputable def ex (k : K) : K.rec 0 k = 0 := rfl
 -- partial WHNF
-noncomputable def fpr (k : K) (c : C 0) : f (fun (n : Nat) => n.rec (.b) (fun _ _ => .a 0)) (.a 0) c (.l 0) (.a (K.rec 0 k)) = r 0 c (.l 0) := rfl
+noncomputable def fpr (k : K) (c : C 0) : f (fun (n : Nat) => n.rec (.b) (fun _ _ => .a 0)) (.a 0) c (.l true 0) (.a (K.rec 0 k)) = r 0 c (.l true 0) := rfl
 #check_l4l fpr
+
 -- full WHNF
-noncomputable def fp (k : K) (c : C 0) : f fn (.a 0) c (.l 0) (.a (K.rec 0 k)) = .l 0 := rfl
+noncomputable def fp (k : K) (c : C 0) : f fn (.a 0) c (.l true 0) (.a (K.rec 0 k)) = true := rfl
 #check_l4l fp
 -- translation should use the same auxiliary function as `fp`
-noncomputable def fp' (c : C 0) : f fn (.a 0) c (.l 0) (.a 0) = .l 0 := rfl
+noncomputable def fp' (c : C 0) : f fn (.a 0) c (.l true 0) (.a 0) = true := rfl
 
 
 def T.rec_aux {n : Nat}
@@ -72,29 +73,31 @@ def T.rec_aux {n : Nat}
   := by subst p; rfl
 
 noncomputable def r_aux (m : Nat) (c : C m) (i : I m)
-   (p_m : HEq m 0) : HEq (r m c i) i :=
-  HEq.trans (a := r m c i) (b := @T.rec x___ (fun _ _ => I m) i (x___ + m) (c x___)) (c := i) sorry
-    (@T.rec_aux x___ (fun _ _ => I m) i (x___ + m) (c x___) sorry)
+   (p_m : HEq m 0) (b : Bool) (p_i : HEq i (I.l b m)) : HEq (r m c i) b :=
+  HEq.trans (a := r m c i) (b := @T.rec x___ (fun _ _ => Bool) (i.rec (fun b _ => b) (fun _ => false) : Bool) (x___ + m) (c x___)) (c := b) sorry
+    (HEq.trans (a := @T.rec x___ (fun _ _ => Bool) (i.rec (fun b _ => b) (fun _ => false) : Bool) (x___ + m) (c x___))
+      (b := (i.rec (fun b _ => b) (fun _ => false) : Bool)) (c := b) 
+      (@T.rec_aux x___ (fun _ _ => Bool) (i.rec (fun b _ => b) (fun _ => false)) (x___ + m) (c x___) sorry) sorry)
 
 noncomputable def g_aux (fn : Nat → E) (m : Nat) (c : C m) (i : I m) (n : Nat)
-   (p_m : HEq m 0) (p_fn : HEq (fn n) E.b) : HEq (g fn m c i n) i :=
-  HEq.trans (a := g fn m c i n) (b := r m c i) (c := i) 
-    (HEq.trans (a := g fn m c i n) (b := @T.rec x___ (fun _ _ => I m) (r m c i) (x___ + m) (c x___)) (c := r m c i) sorry sorry)
-    (r_aux m c i sorry)
+   (p_m : HEq m 0) (b : Bool) (p_i : HEq i (I.l b m)) (p_fn : HEq (fn n) E.b) : HEq (g fn m c i n) b :=
+  HEq.trans (a := g fn m c i n) (b := r m c i) (c := b) 
+    (HEq.trans (a := g fn m c i n) (b := @T.rec x___ (fun _ _ => Bool) (r m c i) (x___ + m) (c x___)) (c := r m c i) sorry sorry)
+    (r_aux m c i sorry b p_i)
 
 noncomputable def f_aux (fn : Nat → E) (m : Nat) (c : C m) (i : I m) (e : E) 
-   (p_m : HEq m 0) (n : Nat) (p_e : HEq e (E.a n)) (p_fn : HEq (fn n) E.b) : HEq (f fn (.a m) c i e) i :=
+   (p_m : HEq m 0) (b : Bool) (p_i : HEq i (I.l b m)) (n : Nat) (p_e : HEq e (E.a n)) (p_fn : HEq (fn n) E.b) : HEq (f fn (.a m) c i e) b :=
   HEq.trans
     (a := f fn (.a m) c i e)
-    (b := m.rec (motive := fun _ => I m) (g fn m c i n) (fun _ _ => .r m))
-    (c := i) sorry
+    (b := m.rec (motive := fun _ => Bool) (g fn m c i n) (fun _ _ => false))
+    (c := b) sorry
       (HEq.trans
-        (a := m.rec (motive := fun _ => I m) (g fn m c i n) (fun _ _ => .r m))
+        (a := m.rec (motive := fun _ => Bool) (g fn m c i n) (fun _ _ => false))
         (b := g fn m c i n)
-        (c := i) sorry (@g_aux fn m c i n p_m sorry))
+        (c := b) sorry (@g_aux fn m c i n p_m b p_i sorry))
 
-noncomputable def fpTrans (k : K) (c : C 0) : f fn (.a 0) c (.l 0) (.a (K.rec 0 k)) = .l 0 :=
+noncomputable def fpTrans (k : K) (c : C 0) : f fn (.a 0) c (.l true 0) (.a (K.rec 0 k)) = true :=
   L4L.castHEq
-    (L4L.appArgHEq' (Eq (f fn (.a 0) c (.l 0) (.a (K.rec 0 k))))
-      (f_aux fn 0 c (.l 0) (.a (K.rec 0 k)) HEq.rfl (K.rec 0 k) HEq.rfl sorry))
+    (L4L.appArgHEq' (Eq (f fn (.a 0) c (.l true 0) (.a (K.rec 0 k))))
+      (f_aux fn 0 c (.l true 0) (.a (K.rec 0 k)) HEq.rfl true HEq.rfl (K.rec 0 k) HEq.rfl sorry))
     rfl

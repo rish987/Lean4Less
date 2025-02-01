@@ -139,7 +139,7 @@ structure S : Type where
 b : Bool
 f : F b
 
-def projTest {B : Bool → Type} (s : B (S.mk true true).2)
+def projTest {B : Bool → Type} (s : B true)
    : B (@K.rec (fun _ => S) (S.mk true true) k).2 := s
 ```
 This is an issue inherent to the translation, and so it is not possible to optimize the output to avoid it. However, it can perhaps be alleviated by minimizing unnecessary uses of proof irrelevance on the input side (prior to translation).
