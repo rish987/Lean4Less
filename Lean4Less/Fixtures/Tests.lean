@@ -1,5 +1,75 @@
 import patch.PatchTheorems
 import Lean4Less.Commands
+import Lean4Lean.Methods
+
+namespace refl
+universe u v
+open Lean
+structure CtxEntry : Type (u + 1) where
+var : Lean.FVarId
+type : Type u
+val : type
+
+inductive Prod where
+| init : CtxEntry → Prod
+| app : Prod → CtxEntry → Prod
+
+-- def inferType (env : Lean.Environment) (lctx : Lean.LocalContext) (t : Lean.Expr) : Bool :=
+--   match ((Lean.TypeChecker.isDefEq t s).run env (lctx := lctx)) with
+--   | .ok (ret, _) => ret
+--   | .error _ => false
+
+-- axiom E : (T : Type) → Lean.Expr → T
+-- axiom E' : (T : Type) → T → Lean.Expr
+-- axiom Ep (T : Type) (t : T) : E T (E' T t) = t
+
+def isDefEq (env : Lean.Environment) (lctx : Lean.LocalContext) (p : Prod) (t s : Lean.Expr) : (Bool × Type × Type) :=
+  match ((Lean.TypeChecker.isDefEq t s).run env (lctx := lctx)) with
+  | .ok (true, _) => (true, sorry, sorry)
+  | .ok (false, _) => (false, PUnit, PUnit)
+  | .error _ => (false, PUnit, PUnit)
+
+axiom l4lrefl (env : Lean.Environment) (lctx : Lean.LocalContext) (p : Prod) (t s : Lean.Expr) :
+  let (defEq, t', s') := isDefEq env lctx p t s
+  defEq = true → t' = s'
+
+-- axiom l4lrefl' (env : Lean.Environment) (lctx : Lean.LocalContext) (T S : Type) : isDefEq env lctx (E' T) (E' S) = true → T = S
+
+variable (P : Prop) (p q : P) (T : P → Type)
+-- `T p` is defeq to `T q` (due to proof irrelevance)
+def ex (t : T p) : T q := t
+def exTrans (t : T p) : T q :=
+  let prf := (l4lrefl sorry sorry sorry (.app (.fvar (.mk `T)) (.fvar (.mk `p))) (.app (.fvar (.mk `T)) (.fvar (.mk `q))))
+  cast prf t 
+end refl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 theorem my_eq_of_heq {α : Sort u} {a a' : α} (h : HEq a a') : Eq a a' := eq_of_heq h
 
