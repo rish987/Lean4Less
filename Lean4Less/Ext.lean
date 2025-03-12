@@ -115,7 +115,7 @@ deriving Inhabited
 
 structure TypeChecker.Context : Type where
   opts : TypeCheckerOpts := {}
-  env : Environment
+  env : Kernel.Environment
   pure : Bool := false -- (for debugging purposes)
   forallOpt : Bool := true -- (for debugging purposes)
   const : Name -- (for debugging purposes)

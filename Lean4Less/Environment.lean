@@ -2,17 +2,18 @@ import Lean4Less.Methods
 import Lean4Less.Quot
 import Lean4Less.Inductive.Add
 import Lean4Less.Primitive
+import Lean4Lean.Environment.Basic
 
 namespace Lean4Less
-namespace Environment
+namespace Kernel.Environment
 open TypeChecker
 
-open private add from Lean.Environment
+open private Lean.Kernel.Environment.add from Lean.Environment
 open Lean
-open Lean.Environment
+open Lean.Kernel.Environment
 
-def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := false) : M (PExpr) := do
-  checkName env v.name allowPrimitive
+def checkConstantVal (env : Kernel.Environment) (v : ConstantVal) (allowPrimitive := false) : M (PExpr) := do
+  env.checkName v.name allowPrimitive
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
   let (typeType, type'?) ← check v.type v.levelParams
@@ -23,7 +24,7 @@ def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := fa
   -- isValidApp ret v.levelParams
   pure ret
 
-def patchAxiom (env : Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
+def patchAxiom (env : Kernel.Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
   let type ← (checkConstantVal env v.toConstantVal).run env v.name (opts := opts)
     (safety := if v.isUnsafe then .unsafe else .safe)
@@ -32,13 +33,13 @@ def patchAxiom (env : Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
   let v := {v with type}
   return .axiomInfo v
 
-def patchDefinition (env : Environment) (v : DefinitionVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
+def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
   if let .unsafe := v.safety then
     -- Meta definition can be recursive.
     -- So, we check the header, add, and then type check the body.
     let type ← (checkConstantVal env v.toConstantVal).run env v.name (safety := .unsafe) (opts := opts)
-    let env' := add env (.defnInfo {v with type})
+    let env' := env.add (.defnInfo {v with type})
     checkNoMVarNoFVar env' v.name v.value
     M.run env' v.name (safety := .unsafe) (lctx := {}) opts do
       let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
@@ -86,7 +87,7 @@ def patchDefinition (env : Environment) (v : DefinitionVal) (allowAxiomReplace :
       -- dbg_trace s!"DBG[35]: Environment.lean:64 (after let v := v with type, value)"
       return (.defnInfo v)
 
-def patchTheorem (env : Environment) (v : TheoremVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
+def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
   -- TODO(Leo): we must add support for handling tasks here
   let type ← M.run env v.name (safety := .safe) (lctx := {}) (opts := opts) do
@@ -116,7 +117,7 @@ def patchTheorem (env : Environment) (v : TheoremVal) (allowAxiomReplace := fals
       throw $ .other "fvar in translated axiom type"
     return .axiomInfo v
 
-def patchOpaque (env : Environment) (v : OpaqueVal) (opts : TypeCheckerOpts) :
+def patchOpaque (env : Kernel.Environment) (v : OpaqueVal) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
   let type ← M.run env v.name (safety := .safe) (lctx := {}) opts do
     checkConstantVal env v.toConstantVal
@@ -132,7 +133,7 @@ def patchOpaque (env : Environment) (v : OpaqueVal) (opts : TypeCheckerOpts) :
   let v := {v with type, value}
   return .opaqueInfo v
 
-def patchMutual (env : Environment) (vs : List DefinitionVal) (opts : TypeCheckerOpts) :
+def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : TypeCheckerOpts) :
     Except KernelException (List ConstantInfo) := do
   let v₀ :: _ := vs | throw <| .other "invalid empty mutual definition"
   if let .safe := v₀.safety then
@@ -150,7 +151,7 @@ def patchMutual (env : Environment) (vs : List DefinitionVal) (opts : TypeChecke
   let mut vs' := []
   for (type, v) in types.zip vs do
     let v' := {v with type}
-    env' := add env' (.defnInfo v')
+    env' := env'.add (.defnInfo v')
     vs' := vs'.append [v']
   let mut newvs' := #[]
   for (v', type) in vs'.zip types do
@@ -168,24 +169,24 @@ def patchMutual (env : Environment) (vs : List DefinitionVal) (opts : TypeChecke
   return newvs'.map .defnInfo |>.toList
 
 /-- Type check given declaration and add it to the environment -/
-def addDecl' (env : Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
-    Except KernelException Environment := do
+def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
+    Except KernelException Kernel.Environment := do
   match decl with
   | .axiomDecl v =>
     let v ← patchAxiom env v opts
-    return add env v
+    return env.add v
   | .defnDecl v =>
     let v ← patchDefinition env v allowAxiomReplace opts
-    return add env v
+    return env.add v
   | .thmDecl v =>
     let v ← patchTheorem env v allowAxiomReplace opts
-    return add env v
+    return env.add v
   | .opaqueDecl v =>
     let v ← patchOpaque env v opts
-    return add env v
+    return env.add v
   | .mutualDefnDecl vs =>
     let vs ← patchMutual env vs opts
-    return vs.foldl (init := env) (fun env v => add env v)
+    return vs.foldl (init := env) (fun env v => env.add v)
   | .quotDecl =>
     addQuot env
   | .inductDecl lparams nparams types isUnsafe =>

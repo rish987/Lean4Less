@@ -4,11 +4,11 @@ namespace Lean4Less
 open Lean
 open Lean4Less.TypeChecker
 
-open private add from Lean.Environment
+open private Lean.Kernel.Environment.add from Lean.Environment
 
 private def arrow (d b : Expr) : Expr := Expr.arrow d b
 
-def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
+def checkPrimitiveDef (env : Kernel.Environment) (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let nat := .const ``Nat []
   let bool := .const ``Bool []
@@ -27,7 +27,7 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
   let y := .bvar 1
   match v.name with
   | ``Nat.add =>
-    unless env.contains ``Nat && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat && v.levelParams.isEmpty do fail
     -- add : Nat → Nat → Nat
     unless ← TypeChecker.isDefEqPure v.type.toPExpr (arrow nat (arrow nat nat)).toPExpr v.levelParams do fail
     let add := mkApp2 v.value
@@ -36,48 +36,48 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
     -- add y (succ x) ≡ succ (add y x)
     unless ← defeq2 (add y (succ x)) (succ (add y x)) do fail
   | ``Nat.pred =>
-    unless env.contains ``Nat && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat && v.levelParams.isEmpty do fail
     -- pred : Nat → Nat
     unless ← defEq v.type (arrow nat nat) do fail
     let pred := mkApp v.value
     unless ← defEq (pred zero) zero do fail
     unless ← defeq1 (pred (succ x)) x do fail
   | ``Nat.sub =>
-    unless env.contains ``Nat.pred && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.pred && v.levelParams.isEmpty do fail
     -- sub : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     let sub := mkApp2 v.value
     unless ← defeq1 (sub x zero) x do fail
     unless ← defeq2 (sub y (succ x)) (pred (sub y x)) do fail
   | ``Nat.mul =>
-    unless env.contains ``Nat.add && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.add && v.levelParams.isEmpty do fail
     -- mul : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     let mul := mkApp2 v.value
     unless ← defeq1 (mul x zero) zero do fail
     unless ← defeq2 (mul y (succ x)) (add (mul y x) y) do fail
   | ``Nat.pow =>
-    unless env.contains ``Nat.mul && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.mul && v.levelParams.isEmpty do fail
     -- pow : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     let pow := mkApp2 v.value
     unless ← defeq1 (pow x zero) (succ zero) do fail
     unless ← defeq2 (pow y (succ x)) (mul (pow y x) y) do fail
   | ``Nat.mod =>
-    unless env.contains ``Nat.sub && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.sub && v.levelParams.isEmpty do fail
     -- mod : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     let mod := mkApp2 v.value
     unless ← defeq1 (mod zero x) zero do fail
     return true -- TODO
   | ``Nat.div =>
-    unless env.contains ``Nat.sub && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.sub && v.levelParams.isEmpty do fail
     -- div : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     return true -- TODO
   | ``Nat.gcd => -- FIXME
     unless not (← read).opts.kLikeReduction do return true -- will abort at translation of terms w/ large GCD computations
-    unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
     unless ← defEq v.type (arrow nat (arrow nat nat)) do fail
     let gcd := mkApp2 v.value
@@ -103,7 +103,7 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
       -- dbg_trace s!"DBG[67]: Primitive.lean:85 \n\n{e}\n\n{← TypeChecker.whnfPure (gcd (mod x (succ y)) (succ y)).toPExpr v.levelParams}"
       fail
   | ``Nat.beq =>
-    unless env.contains ``Nat && env.contains ``Bool && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat && env.constants.contains ``Bool && v.levelParams.isEmpty do fail
     -- beq : Nat → Nat → Bool
     unless ← defEq v.type (arrow nat (arrow nat bool)) do fail
     let beq := mkApp2 v.value
@@ -112,7 +112,7 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
     unless ← defeq1 (beq (succ x) zero) fal do fail
     unless ← defeq2 (beq (succ y) (succ x)) (beq y x) do fail
   | ``Nat.ble =>
-    unless env.contains ``Nat && env.contains ``Bool && v.levelParams.isEmpty do fail
+    unless env.constants.contains ``Nat && env.constants.contains ``Bool && v.levelParams.isEmpty do fail
     -- ble : Nat → Nat → Bool
     unless ← defEq v.type (arrow nat (arrow nat bool)) do fail
     let ble := mkApp2 v.value
@@ -123,7 +123,7 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
   | _ => return false
   return true
 
-def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams : Nat)
+def checkPrimitiveInductive (env : Kernel.Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) (opts : TypeCheckerOpts) : Except KernelException Bool := do
   unless !isUnsafe && lparams.isEmpty && nparams == 0 do return false
   let [type] := types | return false
@@ -147,7 +147,7 @@ def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams :
       -- We need the following definitions for `strLitToConstructor` to work:
       -- Nat : Type (this is primitive so checking for existence suffices)
       let nat := .const ``Nat []
-      unless env.contains ``Nat do fail
+      unless env.constants.contains ``Nat do fail
       -- Char : Type
       let char := .const ``Char []
       _ ← TypeChecker.ensureType char.toPExpr lparams

@@ -85,13 +85,11 @@ abbrev MEE := M (PExpr × Option EExpr)
 abbrev MB := M (Bool × Option EExpr)
 abbrev MLB := M (LBool × Option EExpr)
 
-def M.run (env : Environment) (const : Name) (safety : DefinitionSafety := .safe) (lctx : LocalContext := {}) (opts : TypeCheckerOpts := {})
+def M.run (env : Kernel.Environment) (const : Name) (safety : DefinitionSafety := .safe) (lctx : LocalContext := {}) (opts : TypeCheckerOpts := {})
     (x : M α) : Except KernelException α :=
   x { env, safety, const, opts } |>.run' {lctx}
 
-instance : MonadEnv M where
-  getEnv := return (← read).env
-  modifyEnv _ := pure ()
+def getKEnv : M Kernel.Environment := do return (← read).env
 
 instance : MonadLCtx M where
   getLCtx := return (← get).lctx
@@ -239,7 +237,7 @@ def withNewLetVars (n : Nat) (vars : Array (Name × Expr × Expr)) (m : Array Lo
 def runLeanMinus (M : Lean.TypeChecker.M T) : RecM T := do
   let trace := (← readThe Context).L4LTraceOverride || ((← readThe Context).L4LTrace && (← shouldTrace))
   let opts := (← readThe Context).opts
-  let (ret, newState) ← Lean.TypeChecker.M.run (← getEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := not opts.kLikeReduction, proofIrrelevance := not opts.proofIrrelevance}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams)
+  let (ret, newState) ← Lean.TypeChecker.M.run (← getKEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := not opts.kLikeReduction, proofIrrelevance := not opts.proofIrrelevance}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams)
     (nid := (← get).nid) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (state := (← get).leanMinusState) (trace := trace) M
   modify fun s => {s with leanMinusState := newState, nid := newState.nid, fvarTypeToReusedNamePrefix := newState.fvarTypeToReusedNamePrefix}
   pure ret
@@ -247,7 +245,7 @@ def runLeanMinus (M : Lean.TypeChecker.M T) : RecM T := do
 def runLeanMinusRecM (M : Lean.TypeChecker.RecM T) : RecM T := do
   let trace := (← readThe Context).L4LTraceOverride || ((← readThe Context).L4LTrace && (← shouldTrace))
   let opts := (← readThe Context).opts
-  let (ret, newState) ← Lean.TypeChecker.M.run (← getEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := not opts.kLikeReduction, proofIrrelevance := not opts.proofIrrelevance}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams)
+  let (ret, newState) ← Lean.TypeChecker.M.run (← getKEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := not opts.kLikeReduction, proofIrrelevance := not opts.proofIrrelevance}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams)
     (nid := (← get).nid) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (state := (← get).leanMinusState) (trace := trace)
     M.run
   modify fun s => {s with leanMinusState := newState, nid := newState.nid, fvarTypeToReusedNamePrefix := newState.fvarTypeToReusedNamePrefix}
@@ -256,19 +254,19 @@ def runLeanMinusRecM (M : Lean.TypeChecker.RecM T) : RecM T := do
 def runLeanRecM' (M : Lean.TypeChecker.RecM T) : RecM (T × Lean.TypeChecker.State) := do
   let trace := (← readThe Context).L4LTraceOverride || ((← readThe Context).L4LTrace && (← shouldTrace))
   let eqFVars := (← readThe Context).eqFVars.keys.foldl (init := default) fun acc t => acc.insert t
-  let (ret, s) ← Lean.TypeChecker.M.run (← getEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) (trace := trace) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (eqFVars := eqFVars)
+  let (ret, s) ← Lean.TypeChecker.M.run (← getKEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) (trace := trace) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (eqFVars := eqFVars)
     M.run
   pure (ret, s)
 
 def runLeanRecM (M : Lean.TypeChecker.RecM T) : RecM T := do
   let trace := (← readThe Context).L4LTraceOverride || ((← readThe Context).L4LTrace && (← shouldTrace))
   let eqFVars := (← readThe Context).eqFVars.keys.foldl (init := default) fun acc t => acc.insert t
-  let (ret, _) ← Lean.TypeChecker.M.run (← getEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) (trace := trace) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (eqFVars := eqFVars)
+  let (ret, _) ← Lean.TypeChecker.M.run (← getKEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) (trace := trace) (fvarTypeToReusedNamePrefix := (← get).fvarTypeToReusedNamePrefix) (eqFVars := eqFVars)
     M.run
   pure ret
 
 -- def runLean (M : Lean.TypeChecker.M T) : RecM T := do
---   Lean.TypeChecker.M.run' (← getEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) M
+--   Lean.TypeChecker.M.run' (← getKEnv) (safety := (← readThe Context).safety) (opts := {kLikeReduction := true, proofIrrelevance := true}) (lctx := ← getLCtx) (lparams := (← readThe Context).lparams) (nid := (← get).nid) M
 
 inductive ReductionStatus where
   | continue (nltn nlsn : PExpr) (pltnEqnltn? plsnEqnlsn? : Option EExpr)
@@ -339,7 +337,7 @@ def ensureSortCore (e : PExpr) (s : Expr) : RecEE := do
   if Expr.isSort e then return (e, none)
   let (e, p?) ← whnf 1 e
   if e.toExpr.isSort then return (e, p?)
-  throw <| .typeExpected (← getEnv) default s
+  throw <| .typeExpected (← getKEnv) default s
 
 def assert (n : Nat) (b : Bool) : RecM Unit := do if not b then throw $ .other s!"assert fail {n}"
 
@@ -360,7 +358,7 @@ def ensureForallCore (e : PExpr) (s : Expr) : RecEE := do
   if Expr.isForall e then return (e, none)
   let (e, p?) ← whnf 2 e
   if e.toExpr.isForall then return (e, p?)
-  throw <| .funExpected (← getEnv) (← getLCtx) s
+  throw <| .funExpected (← getKEnv) (← getLCtx) s
 
 @[inherit_doc ensureForallCore]
 def ensureForallCorePure (e : PExpr) (s : Expr) : RecM PExpr := do
@@ -389,7 +387,7 @@ def inferConstant (tc : Context) (name : Name) (ls : List Level) :
     Except KernelException PExpr := do
   let e := Expr.const name ls
   -- should be okay as the environment should only contain patched constants
-  let info ← Environment.get tc.env name
+  let info ← tc.env.get name
   let ps := info.levelParams
   if ps.length != ls.length then
     throw <| .other s!"incorrect number of universe levels parameters for '{e
@@ -1408,7 +1406,7 @@ def inferLet (e : Expr) : RecPE := do
       let (valType, val'?) ← inferType 21 val 
       let val' := val'?.getD val.toPExpr
       let ((true, pVal?), valC', _) ← smartCast' 17 valType type' val' |
-        throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type'
+        throw <| .letTypeMismatch (← getKEnv) (← getLCtx) name valType type'
       withNewLetVar 10 name type' valC' fun var => do
         let fvars := fvars.push (.fvar var)
         let ret ← loop fvars (typePatched || type'?.isSome || pType?.isSome || val'?.isSome || pVal?.isSome) body
@@ -1454,7 +1452,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct : PExpr) (patched : Bool) (s
   let mut struct := struct
   -- TODO if pType? := some _ then must cast struct
   type.toExpr.withApp fun I args => do
-  let env ← getEnv
+  let env ← getKEnv
   let fail {_} := do throw <| .invalidProj env (← getLCtx) e
   let .const I_name I_levels := I | fail
   if typeName != I_name then fail
@@ -1529,7 +1527,7 @@ def inferType' (e : Expr) (_dbg := false) : RecPE := do
       let ((true, pa'?), a', _) ← smartCast' 19 aType dType (a'?.getD a.toPExpr) |
         -- if e'.isApp then if let .const `Bool.casesOn _ := e'.withApp fun f _ => f then
         -- dbg_trace s!"dbg: {(← whnf 0 dType.toExpr.getAppArgs[2]!.toPExpr).1} {(← whnf 0 aType.toExpr.getAppArgs[2]!.toPExpr).1}"
-        throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType' aType
+        throw <| .appTypeMismatch (← getKEnv) (← getLCtx) e fType' aType
 
       let patch := if f'?.isSome || a'?.isSome || pf'?.isSome || pa'?.isSome then .some (Expr.app f' a').toPExpr else none
       pure ((Expr.bindingBody! fType').instantiate1 a' |>.toPExpr, patch)
@@ -1565,7 +1563,7 @@ def whnfFVar (e : PExpr) (cheapK : Bool) (cheapProj : Bool) : RecEE := do
 
 def appProjThm? (structName : Name) (projIdx : Nat) (struct structN : PExpr) (structEqstructN? : Option EExpr) : RecM (Option EExpr) := do
   structEqstructN?.mapM fun _ => do
-    let env ← getEnv
+    let env ← getKEnv
     let structNType ← whnfPure 30 (← inferTypePure 31 structN)
     let structType ← whnfPure 32 (← inferTypePure 33 struct)
     let structTypeC := if structType.toExpr.isApp then structType.toExpr.withApp fun f _ => f else structType.toExpr
@@ -1628,7 +1626,7 @@ def reduceProj (structName : Name) (projIdx : Nat) (struct : PExpr) (cheapK : Bo
 
   structN.toExpr.withApp fun mk args => do
     let .const mkC _ := mk | return none
-    let .ctorInfo mkCtorInfo ← (← getEnv).get mkC | return none
+    let .ctorInfo mkCtorInfo ← (← getKEnv).get mkC | return none
     let projstructEqprojstructN? ← appProjThm? structName projIdx struct structN structEqc?
 
     return args[mkCtorInfo.numParams + projIdx]?.map (·.toPExpr, projstructEqprojstructN?)
@@ -1640,7 +1638,7 @@ def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
 Checks if `e` has a head constant that can be delta-reduced (that is, it is a
 theorem or definition), returning its `ConstantInfo` if so.
 -/
-def isDelta (env : Environment) (e : PExpr) : Option ConstantInfo := do
+def isDelta (env : Kernel.Environment) (e : PExpr) : Option ConstantInfo := do
   if let .const c _ := e.toExpr.getAppFn then
     -- if c != `L4L.eq_of_heq then -- TODO have to block all of the patch theorems?
     if let some ci := env.find? c then
@@ -1653,7 +1651,7 @@ Checks if `e` has a head constant that can be delta-reduced (that is, it is a
 theorem or definition), returning its value (instantiated by level parameters)
 if so.
 -/
-def unfoldDefinitionCore (env : Environment) (e : PExpr) : Option PExpr := do
+def unfoldDefinitionCore (env : Kernel.Environment) (e : PExpr) : Option PExpr := do
   if let .const _ ls := e.toExpr then
     if let some d := isDelta env e then
       if ls.length == d.numLevelParams then
@@ -1665,7 +1663,7 @@ def unfoldDefinitionCore (env : Environment) (e : PExpr) : Option PExpr := do
 Unfolds the definition at the head of the application `e` (or `e` itself if it
 is not an application).
 -/
-def unfoldDefinition (env : Environment) (e : PExpr) : Option PExpr := do
+def unfoldDefinition (env : Kernel.Environment) (e : PExpr) : Option PExpr := do
   if e.toExpr.isApp then
     let f0 := e.toExpr.getAppFn
     if let some f := unfoldDefinitionCore env f0.toPExpr then
@@ -1675,7 +1673,7 @@ def unfoldDefinition (env : Environment) (e : PExpr) : Option PExpr := do
   else
     unfoldDefinitionCore env e
 
-def reduceNative (_env : Environment) (e : PExpr) : Except KernelException (Option (PExpr × Option EExpr)) := do
+def reduceNative (_env : Kernel.Environment) (e : PExpr) : Except KernelException (Option (PExpr × Option EExpr)) := do
   let .app f (.const c _) := e.toExpr | return none
   if f == .const ``reduceBool [] then
     throw <| .other s!"lean4lean does not support 'reduceBool {c}' reduction"
@@ -1857,10 +1855,10 @@ it is definitionally equal to by the struct-η rule).
 def tryEtaStructCore (t s : PExpr) : RecB := do
   let ctor := s.toExpr.getAppFn
   let .const f _ := ctor | return (false, none)
-  let env ← getEnv
+  let env ← getKEnv
   let .ctorInfo fInfo ← env.get f | return (false, none)
   unless s.toExpr.getAppNumArgs == fInfo.numParams + fInfo.numFields do return (false, none)
-  unless isStructureLike env fInfo.induct do return (false, none)
+  unless isStructureLike' env fInfo.induct do return (false, none)
   unless ← isDefEqPure 48 (← inferTypePure 49 t) (← inferTypePure 50 s) do return (false, none)
   let args := s.toExpr.getAppArgs
   let mut exptE := ctor
@@ -1883,8 +1881,8 @@ def tryEtaStruct (t s : PExpr) : RecB := do
     return (true, ← appHEqSymm? sEqt?)
 
 def reduceRecursor (e : PExpr) (cheapK : Bool) : RecM (Option (PExpr × Option EExpr)) := do
-  let env ← getEnv
-  if env.header.quotInit then
+  let env ← getKEnv
+  if env.quotInit then
     if let some r ← quotReduceRec methsR e then
       -- _ ← inferTypePure 6001 r.1 -- sanity check TODO remove
       return r
@@ -2041,7 +2039,7 @@ private def _whnf' (_e : Expr) (cheapK := false) : RecEE := do
   | 0 =>
     throw .deterministicTimeout
   | fuel+1 => do
-    let env ← getEnv
+    let env ← getKEnv
     let (ler, leEqler?) ← whnfCore' le (cheapK := cheapK)
     let eEqler? ← appHEqTrans? e le ler eEqle? leEqler?
     if let some (ler', lerEqler'?) ← reduceNative env ler then return (ler', ← appHEqTrans? e ler ler' eEqler? lerEqler'?)
@@ -2122,7 +2120,7 @@ def lazyDeltaReductionStep (ltn lsn : PExpr) : RecM ReductionStatus := do
   -- if (← callId) > 384  && ! (← shouldTrace) then
   --   if ltn.toExpr.containsFVar' (.mk "_kernel_fresh.37".toName) || lsn.toExpr.containsFVar' (.mk "_kernel_fresh.37".toName) then 
   --     throw $ .other "HERE A"
-  let env ← getEnv
+  let env ← getKEnv
   let delta e := do
     let (ne, eEqne?) ← whnfCore 63 (unfoldDefinition env e).get! (cheapK := true) (cheapProj := true)
     -- if ne.toExpr.containsFVar' (.mk "_kernel_fresh.86".toName) then 
@@ -2259,7 +2257,7 @@ def lazyDeltaReduction (tn sn : PExpr) : RecM ReductionStatus := loop tn sn none
         let (ret, ptnEqsn'?) ← isDefEqCore 66 ltn lsn'
         let tnEqsn? ← appHEqTrans? ltn lsn' lsn ptnEqsn'? (← appHEqSymm? lsnEqlsn'?)
         return .bool ret tnEqsn?
-    let env ← getEnv
+    let env ← getKEnv
     if let some (ltn', pltnEqLtn'?) ← reduceNative env ltn then
       -- TODO does this case ever happen?
       let (ret, ptn'Eqsn?) ← isDefEqCore 67 ltn' lsn
@@ -2313,7 +2311,7 @@ with one constructor without any fields or indices).
 def isDefEqUnitLike (t s : PExpr) : RecB := do
   let tType ← whnfPure 70 (← inferTypePure 71 t)
   let .const I _ := tType.toExpr.getAppFn | return (false, none)
-  let env ← getEnv
+  let env ← getKEnv
   let .inductInfo { isRec := false, ctors := [c], numIndices := 0, .. } ← env.get I
     | return (false, none)
   let .ctorInfo { numFields := 0, .. } ← env.get c | return (false, none)
@@ -2403,7 +2401,7 @@ def isDefEqCore' (t s : PExpr) : RecM (Bool × (Option EExpr)) := do
     if let .const tn _ := tf then
       if let .const sn _ := sf then
         if tn == sn then
-          if let some (.recInfo info) := (← getEnv).find? tn then
+          if let some (.recInfo info) := (← getKEnv).find? tn then
             if info.k then
               -- optimized by above functions using `cheapK = true`
               match ← isDefEqApp 6 tn' sn' with

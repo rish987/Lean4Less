@@ -2,6 +2,7 @@ import Lean.Structure
 import Lean4Lean.Expr
 import Lean4Less.EExpr
 import Lean4Less.Ext
+import Lean4Lean.Inductive.Reduce
 
 namespace Lean4Less
 open Lean
@@ -9,7 +10,7 @@ open Lean4Less.TypeChecker
 
 section
 
-variable [Monad m] [MonadReaderOf Context m] [MonadExcept KernelException M] (env : Environment)
+variable [Monad m] [MonadReaderOf Context m] [MonadExcept KernelException M] (env : Kernel.Environment)
   (meth : ExtMethodsR m)
 
 def getFirstCtor (dName : Name) : Option Name := do
@@ -85,7 +86,7 @@ For instance if we have `e : String`, it is converted into
 eta).
 -/
 def toCtorWhenStruct (inductName : Name) (e : PExpr) : m (PExpr × Option EExpr) := do
-  if !isStructureLike env inductName || (e.toExpr.isConstructorApp?' env).isSome then
+  if !isStructureLike' env inductName || (isConstructorApp?' env e.toExpr).isSome then
     return (e, none)
   let eType ← meth.whnfPure 107 (← meth.inferTypePure 106 e)
   if !eType.toExpr.getAppFn.isConstOf inductName then return (e, none)
@@ -106,7 +107,7 @@ constructor application). The reduction is done by applying the
 `RecursorRule.rhs` associated with the constructor to the parameters from the
 recursor application and the fields of the constructor application.
 -/
-def inductiveReduceRec [Monad m] [MonadLCtx m] [MonadExcept KernelException m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Environment) (e : PExpr) (cheapK : Bool := false)
+def inductiveReduceRec [Monad m] [MonadLCtx m] [MonadExcept KernelException m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Kernel.Environment) (e : PExpr) (cheapK : Bool := false)
     : m (Option (PExpr × Option EExpr)) := do
   let recFn := e.toExpr.getAppFn
   let .const recFnName ls := recFn | return none

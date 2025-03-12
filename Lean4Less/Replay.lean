@@ -7,7 +7,7 @@ open Lean
 
 namespace Lean4Less
 
-open Lean4Less.Environment
+open Lean4Less.Kernel.Environment
 open Lean4Lean
 
 /-- Add a declaration, possibly throwing a `KernelException`. -/
@@ -15,7 +15,7 @@ def addDecl (d : Declaration) (opts : TypeCheckerOpts := {}) : M Unit := do
   if (← read).verbose then
     println! "adding {d.name}"
   let t1 ← IO.monoMsNow
-  match Lean4Less.Environment.addDecl' (← get).env d opts with
+  match Lean4Less.Kernel.Environment.addDecl' (← get).env d opts with
   | .ok env =>
     let t2 ← IO.monoMsNow
     if t2 - t1 > 1000 then

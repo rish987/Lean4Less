@@ -16,20 +16,20 @@ open Lean4Lean
 open Lean4Less
 open Cli
 
-open private add markQuotInit from Lean.Environment
+open private Lean.Kernel.Environment.add markQuotInit from Lean.Environment
 
-def add' (env : Environment) (ci : ConstantInfo) : Environment :=
+def add' (env : Kernel.Environment) (ci : ConstantInfo) : Kernel.Environment :=
   let env := match ci with
     | .quotInfo _ =>
       markQuotInit env
     | _ => env
-  add env ci
+  env.add ci
 
 def outDir : System.FilePath := System.mkFilePath [".", "out"]
 
 structure ForEachModuleState where
   moduleNameSet : NameHashSet := {}
-  env : Environment
+  env : Kernel.Environment
   count := 0
 
 -- def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx) (modIdx : Nat) (cname : Name) : IO α := do
@@ -39,7 +39,7 @@ structure ForEachModuleState where
 
 abbrev ForEachModuleM := StateRefT ForEachModuleState IO
 
-@[inline] nonrec def ForEachModuleM.run (env : Environment) (x : ForEachModuleM α) (s : ForEachModuleState := {env}) : IO (α × ForEachModuleState) :=
+@[inline] nonrec def ForEachModuleM.run (env : Kernel.Environment) (x : ForEachModuleM α) (s : ForEachModuleState := {env}) : IO (α × ForEachModuleState) :=
   x.run s
 
 partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × ModuleData) := do
@@ -68,16 +68,16 @@ partial def forEachModule' (f : Name → ModuleData → NameSet → ForEachModul
       aborted ← f n m aborted
   pure aborted
 
-def mkModuleData (imports : Array Import) (env : Environment) : IO ModuleData := do
-  let pExts ← persistentEnvExtensionsRef.get
-  let entries := pExts.map fun pExt =>
-    let state := pExt.getState env
-    (pExt.name, pExt.exportEntriesFn state)
+def mkModuleData (imports : Array Import) (env : Kernel.Environment) : IO ModuleData := do
+  -- let pExts ← persistentEnvExtensionsRef.get
+  -- let entries := pExts.map fun pExt =>
+  --   let state := pExt.getState env
+  --   (pExt.name, pExt.exportEntriesFn state)
   let constNames := env.constants.foldStage2 (fun names name _ => names.push name) #[]
   let constants  := env.constants.foldStage2 (fun cs _ c => cs.push c) #[]
   return {
     extraConstNames := #[],
-    imports, constNames, constants, entries
+    imports, constNames, constants, entries := default
   }
 
 def patchPreludeModName := `Init.PatchPrelude
@@ -107,12 +107,12 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     | .anonymous => throw <| IO.userError s!"Could not resolve module: {mod}"
     | m =>
       let (lemmEnv, success) ← Lean.Elab.runFrontend (include_str "patch" / "PatchTheorems.lean") default default `Patch -- TODO how to add PatchTheorems.lean as a lake dependency?
-      let overrides := Lean4Less.getOverrides lemmEnv
+      let overrides := Lean4Less.getOverrides lemmEnv.toKernelEnv
       if not success then
         throw $ IO.userError $ "elab of patching defs failed"
       if let some onlyConsts := onlyConsts? then
         Lean.withImportModules #[{module := mod}] {} 0 fun env => do
-          let mut env := env
+          let mut env := env.toKernelEnv
           for (_, c) in lemmEnv.constants do
             env := add' env c
           _ ← Lean4Less.checkL4L (onlyConsts.map (·.toName)) env (printProgress := true) (printOutput := p.hasFlag "print") (opts := opts) (dbgOnly := dbgOnly) (deps := not dbgOnly)
@@ -158,8 +158,9 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
 
         IO.println s!">>init module"
         let patchConsts ← getDepConstsEnv lemmEnv Lean4Less.patchConsts overrides
-        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment) (printProgress := true) (op := "patch") (aborted := aborted)
+        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
         mkMod #[] env patchPreludeModName aborted
+
 
         let (aborted, s) ← ForEachModuleM.run env do
           forEachModule' (imports := #[m]) (aborted := aborted) fun n d aborted => do
@@ -190,7 +191,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
             unless not skip do return aborted
 
             let (newConstants, overrides) ← d.constNames.zip d.constants |>.foldlM (init := (default, Lean4Less.getOverrides env)) fun (accNewConstants, accOverrides) (n, ci) => do
-              if not ((← get).env.contains n) then
+              if not ((← get).env.constants.contains n) then
                 if let some n' := constOverrides[n]? then
                   if let some ci' := lemmEnv.find? n' then
                     let accOverrides := accOverrides.insert n ci'
@@ -198,7 +199,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
                     let overrideDeps ← getDepConstsEnv lemmEnv #[n'] overrides
                     let mut accNewConstants := accNewConstants
                     for (dep, depi) in overrideDeps do
-                      if not ((← get).env.contains dep) then
+                      if not ((← get).env.constants.contains dep) then
                         accNewConstants := accNewConstants.insert dep depi
                     pure (accNewConstants.insert n ci, accOverrides)
                   else

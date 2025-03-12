@@ -8,19 +8,19 @@ open Lean4Lean
 
 namespace Lean4Less
 
-def ppConst (env : Environment) (n : Name) : IO Unit := do
+def ppConst (env : Kernel.Environment) (n : Name) : IO Unit := do
   let options := default
   let options := KVMap.set options `pp.proofs true
   let options := KVMap.set options `pp.explicit true
   let options := KVMap.set options `pp.funBinderTypes true
   let some info := env.find? n | unreachable!
   try
-    IO.print s!"patched {info.name}: {← (PrettyPrinter.ppExprLegacy env default default options info.type)}"
+    IO.print s!"patched {info.name}: {← (PrettyPrinter.ppExprLegacy (Environment.ofKernelEnv env) default default options info.type)}"
 
     match info.value? with
     | .some v =>
       if v.approxDepth < 100 then
-        IO.println s!"\n{← (PrettyPrinter.ppExprLegacy env default default options v)}"
+        IO.println s!"\n{← (PrettyPrinter.ppExprLegacy (Environment.ofKernelEnv env) default default options v)}"
       else
         IO.println s!"\n [[[expression too large]]]"
     | _ => IO.println ""
@@ -113,9 +113,9 @@ def constOverrides' : Array (Name × Name) := #[
 def constOverrides : Std.HashMap Name Name := constOverrides'.foldl (init := default) fun acc (n, n') => acc.insert n n'
 
 -- def getOverrides (env : Environment) (overrides : Std.HashMap Name Name) : Std.HashMap Name ConstantInfo :=
-def getOverrides (env : Environment) : Std.HashMap Name ConstantInfo :=
+def getOverrides (env : Kernel.Environment) : Std.HashMap Name ConstantInfo :=
   constOverrides.fold (init := default) fun acc n n' =>
-    if env.contains n then
+    if env.constants.contains n then
       if let some ci := env.find? n' then
         acc.insert n ci
       else
@@ -123,19 +123,22 @@ def getOverrides (env : Environment) : Std.HashMap Name ConstantInfo :=
     else
       acc
 
-def transL4L' (ns : Array Name) (env : Environment) (pp := false) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) : IO Environment := do
+def transL4L' (ns : Array Name) (env : Kernel.Environment) (pp := false) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) : IO Environment := do
   let map := ns.foldl (init := default) fun acc n => .insert acc n
-  let (_, newEnv) ← checkConstants (printErr := true) env map (@Lean4Less.addDecl (opts := opts)) (initConsts := patchConsts) (op := "patch") (printProgress := printProgress) (interactive := interactive) (overrides := getOverrides env) (dbgOnly := dbgOnly)
+  let (_, newEnv) ← checkConstants (printErr := true) (Environment.ofKernelEnv env) map (@Lean4Less.addDecl (opts := opts)) (initConsts := patchConsts) (op := "patch") (printProgress := printProgress) (interactive := interactive) (overrides := getOverrides env) (dbgOnly := dbgOnly)
   for n in ns do
     if pp then
-      ppConst newEnv n
+      ppConst newEnv.toKernelEnv n
   pure newEnv
 
-def transL4L (n : Array Name) (env? : Option Environment := none) : Lean.Elab.Command.CommandElabM Environment := do
-  let env ← env?.getDM getEnv
+def transL4L (n : Array Name) (env? : Option Kernel.Environment := none) : Lean.Elab.Command.CommandElabM Environment := do
+  let env ← env?.getDM (do
+      let e ← getEnv
+      pure e.toKernelEnv
+    )
   transL4L' n env
 
-def checkL4L (ns : Array Name) (env : Environment) (printOutput := true) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) (deps := false) : IO Environment := do
+def checkL4L (ns : Array Name) (env : Kernel.Environment) (printOutput := true) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) (deps := false) : IO Environment := do
   let env ← transL4L' ns env (pp := printOutput) (printProgress := printProgress) (interactive := interactive) (opts := opts) (dbgOnly := dbgOnly)
   let ns := ns
   let nSet := ns.foldl (init := default) fun acc n => acc.insert n
@@ -158,13 +161,13 @@ elab "#trans_l4l " i:ident : command => do
   _ ← transL4L #[i.getId]
 
 elab "#check_only " i:ident : command => do
-  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) (Lean4Lean.addDecl (verbose := true)) (opts := {}) (interactive := true) (overrides := getOverrides (← getEnv))
+  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) (Lean4Lean.addDecl (verbose := true)) (opts := {}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
 
 elab "#check_off " i:ident : command => do
-  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) Lean4Lean.addDecl (opts := {proofIrrelevance := false, kLikeReduction := false}) (interactive := true) (overrides := getOverrides (← getEnv))
+  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) Lean4Lean.addDecl (opts := {proofIrrelevance := false, kLikeReduction := false}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
 
 elab "#check_l4l " i:ident : command => do
-  _ ← checkL4L #[i.getId] (← getEnv) (interactive := true)
+  _ ← checkL4L #[i.getId] (← getEnv).toKernelEnv (interactive := true)
 
 end Lean4Less
   -- match macroRes with
