@@ -101,8 +101,9 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     System.FilePath.mk $ sp.as! String
   let pi : Bool := p.hasFlag "proof-irrel"
   let dbgOnly : Bool := p.hasFlag "dbg-only"
+  let univs : Bool := p.hasFlag "univs"
   let klr : Bool := p.hasFlag "klike-red"
-  let opts : Lean4Less.TypeCheckerOpts := {proofIrrelevance := pi, kLikeReduction := klr}
+  let opts : Lean4Less.TypeCheckerOpts := {proofIrrelevance := pi, kLikeReduction := klr, univs := univs}
   match mod with
     | .anonymous => throw <| IO.userError s!"Could not resolve module: {mod}"
     | m =>
@@ -158,9 +159,8 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
 
         IO.println s!">>init module"
         let patchConsts ← getDepConstsEnv lemmEnv Lean4Less.patchConsts overrides
-        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
+        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted) (initConsts := #[`L4L.Level.normalize])
         mkMod #[] env patchPreludeModName aborted
-
 
         let (aborted, s) ← ForEachModuleM.run env do
           forEachModule' (imports := #[m]) (aborted := aborted) fun n d aborted => do
@@ -241,6 +241,7 @@ unsafe def transCmd : Cmd := `[Cli|
     O, "dbg-only"; "(for debugging)"
     pi, "proof-irrel"; "Eliminate proof irrelevance."
     klr, "klike-red"; "Eliminate K-like reduction."
+    u, "univs"; "Eliminate special universe syntax/equality checking."
     c, cached : String; "Use cached library translation files from specified directory."
 
   ARGS:

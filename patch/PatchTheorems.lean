@@ -1,9 +1,239 @@
-prelude
-import Init.Prelude
-import Init.Notation
-import Init.Core
+import Lean.Data.Name
 
 namespace L4L
+
+inductive Level where
+| zero  : Level
+| succ  : Level → Level
+| max   : Level → Level → Level
+| imax  : Level → Level → Level
+| param : Lean.Name → Level → Level
+| inst  : Level → Level
+deriving BEq, Inhabited
+
+namespace Level
+
+def ctorToNat : Level → Nat
+  | zero ..  => 0
+  | param .. => 1
+  | succ ..  => 2
+  | max ..   => 3
+  | imax ..  => 4
+  | inst ..  => 5
+
+def normLtAux : Level → Nat → Level → Nat → Bool
+  | .succ l₁, k₁, l₂, k₂ => normLtAux l₁ (k₁+1) l₂ k₂
+  | l₁, k₁, .succ l₂, k₂ => normLtAux l₁ k₁ l₂ (k₂+1)
+  | l₁@(max l₁₁ l₁₂), k₁, l₂@(max l₂₁ l₂₂), k₂ =>
+    if l₁ == l₂ then k₁ < k₂
+    else if l₁₁ != l₂₁ then normLtAux l₁₁ 0 l₂₁ 0
+    else normLtAux l₁₂ 0 l₂₂ 0
+  | l₁@(imax l₁₁ l₁₂), k₁, l₂@(imax l₂₁ l₂₂), k₂ =>
+    if l₁ == l₂ then k₁ < k₂
+    else if l₁₁ != l₂₁ then normLtAux l₁₁ 0 l₂₁ 0
+    else normLtAux l₁₂ 0 l₂₂ 0
+  | .param n₁ _, k₁, param n₂ _, k₂ => if n₁ == n₂ then k₁ < k₂ else Lean.Name.lt n₁ n₂ -- use `Name.lt` because it is lexicographical
+  /-
+    We also use `Name.lt` in the following case to make sure universe parameters in a declaration
+    are not affected by shifted indices. We used to use `Name.quickLt` which is not stable over shifted indices (the hashcodes change),
+    and changes to the elaborator could affect the universe parameters and break code that relies on an explicit order.
+    Example: test `tests/lean/343.lean`.
+   -/
+  | l₁, k₁, l₂, k₂ => if l₁ == l₂ then k₁ < k₂ else ctorToNat l₁ < ctorToNat l₂
+
+/--
+  A total order on level expressions that has the following properties
+  - `succ l` is an immediate successor of `l`.
+  - `zero` is the minimal element.
+ This total order is used in the normalization procedure. -/
+def normLt (l₁ l₂ : Level) : Bool :=
+  normLtAux l₁ 0 l₂ 0
+
+def getOffsetAux : Level → Nat → Nat
+  | succ u  , r => getOffsetAux u (r+1)
+  | _,        r => r
+
+def getOffset (lvl : Level) : Nat :=
+  getOffsetAux lvl 0
+
+def getLevelOffset : Level → Level
+  | succ u   => getLevelOffset u
+  | u        => u
+
+private def isAlreadyNormalizedCheap : Level → Bool
+  | .zero    => true
+  | .param _ _ => true
+  | .succ u  => isAlreadyNormalizedCheap u
+  | _       => false
+
+def isZero : Level → Bool
+  | zero   => true
+  | _      => false
+
+private def isExplicitSubsumedAux (lvls : Array Level) (maxExplicit : Nat) (i : Nat) : Bool :=
+  if h : i < lvls.size then
+    let lvl := lvls[i]
+    if lvl.getOffset ≥ maxExplicit then true
+    else isExplicitSubsumedAux lvls maxExplicit (i+1)
+  else
+    false
+
+/- Auxiliary function for `normalize`. See `isExplicitSubsumedAux` -/
+private def isExplicitSubsumed (lvls : Array Level) (firstNonExplicit : Nat) : Bool :=
+  if firstNonExplicit == 0 then false
+  else
+    let max := lvls[firstNonExplicit - 1]!.getOffset
+    isExplicitSubsumedAux lvls max firstNonExplicit
+
+/-
+  Auxiliary function for `normalize`. It assumes `lvls` has been sorted using `normLt`.
+  It finds the first position that is not an explicit universe. -/
+private def skipExplicit (lvls : Array Level) (i : Nat) : Nat :=
+  if h : i < lvls.size then
+    let lvl := lvls[i]
+    if lvl.getLevelOffset.isZero then skipExplicit lvls (i+1) else i
+  else
+    i
+
+def levelZero :=
+  Level.zero
+
+def mkLevelSucc (u : Level) :=
+  Level.succ u
+
+def mkLevelMax (u v : Level) :=
+  Level.max u v
+
+def mkLevelIMax (u v : Level) :=
+  Level.imax u v
+
+def addOffsetAux : Nat → Level → Level
+  | 0,     u => u
+  | (n+1), u => addOffsetAux n (mkLevelSucc u)
+
+def addOffset (u : Level) (n : Nat) : Level :=
+  u.addOffsetAux n
+
+private def accMax (result : Level) (prev : Level) (offset : Nat) : Level :=
+  if result.isZero then prev.addOffset offset
+  else mkLevelMax result (prev.addOffset offset)
+
+private partial def mkMaxAux (lvls : Array Level) (extraK : Nat) (i : Nat) (prev : Level) (prevK : Nat) (result : Level) : Level :=
+  if h : i < lvls.size then
+    let lvl   := lvls[i]
+    let curr  := lvl.getLevelOffset
+    let currK := lvl.getOffset
+    if curr == prev then
+      mkMaxAux lvls extraK (i+1) curr currK result
+    else
+      mkMaxAux lvls extraK (i+1) curr currK (accMax result prev (extraK + prevK))
+  else
+    accMax result prev (extraK + prevK)
+
+private def mkIMaxAux : Level → Level → Level
+  | _,    zero => zero
+  | zero, u    => u
+  | u₁,   u₂   => if u₁ == u₂ then u₁ else mkLevelIMax u₁ u₂
+
+def isNeverZero : Level → Bool
+  | zero         => false
+  | param ..     => false
+  | succ ..      => true
+  | max l₁ l₂    => isNeverZero l₁ || isNeverZero l₂
+  | imax _  l₂   => isNeverZero l₂
+  | inst l       => isNeverZero l
+
+def size : Level → Nat
+| zero         => 0
+| param _ l    => 1 + l.size
+| succ l       => 2 + l.size
+| max l₁ l₂    => 3 + l₁.size + l₂.size
+| imax l₁ l₂   => 4 + l₁.size + l₂.size
+| inst l       => 5 + l.size
+
+instance : SizeOf Level where
+  sizeOf l := l.size
+
+theorem offsetLte (l : Level) : sizeOf (l.getLevelOffset) ≤ sizeOf l := by
+  simp only [sizeOf, size, getLevelOffset]
+  induction l with
+  | zero         =>
+    simp only [getLevelOffset]
+    omega
+  | param _ l    =>
+    simp only [getLevelOffset]
+    omega
+  | succ l ih    =>
+    simp only [size, getLevelOffset, size]
+    omega
+  | max l₁ l₂    =>
+    simp only [getLevelOffset]
+    omega
+  | imax l₁ l₂   =>
+    simp only [getLevelOffset]
+    omega
+  | inst l       =>
+    simp only [getLevelOffset]
+    omega
+
+mutual
+def getMaxArgsAux : Level → Array Level → Array Level
+  | max l₁ l₂, lvls => getMaxArgsAux l₂ (getMaxArgsAux l₁ lvls)
+  | l,         lvls => lvls.push l
+
+@[reducible]
+def normalize (l : Level) : Level :=
+  if isAlreadyNormalizedCheap l then l
+  else
+    let k := l.getOffset
+    let u := l.getLevelOffset
+    have hul : sizeOf u ≤ sizeOf l := by
+      apply offsetLte
+    match u with
+    | .max l₁ l₂ =>
+      let lvls  := getMaxArgsAux (normalize l₁) #[]
+      let lvls  := getMaxArgsAux (normalize l₂) lvls
+      let lvls  := lvls.qsort normLt
+      let firstNonExplicit := skipExplicit lvls 0
+      let i := if isExplicitSubsumed lvls firstNonExplicit then firstNonExplicit else firstNonExplicit - 1
+      let lvl₁  := lvls[i]!
+      let prev  := lvl₁.getLevelOffset
+      let prevK := lvl₁.getOffset
+      mkMaxAux lvls k (i+1) prev prevK levelZero
+    | .imax l₁ l₂ =>
+      if l₂.isNeverZero then addOffset (normalize (.max l₁ l₂)) k
+      else
+        let l₁ := normalize l₁
+        let l₂ := normalize l₂
+        addOffset (mkIMaxAux l₁ l₂) k
+    | _ => unreachable!
+  decreasing_by
+  have : sizeOf l₁ < sizeOf (Level.max l₁ l₂) := by
+    simp only [sizeOf, size]
+    omega
+  omega
+  have : sizeOf l₂ < sizeOf (Level.max l₁ l₂) := by
+    simp only [sizeOf, size]
+    omega
+  omega
+  have : sizeOf (Level.max l₁ l₂) < sizeOf (Level.imax l₁ l₂) := by
+    simp only [sizeOf, size]
+    omega
+  omega
+  have : sizeOf l₁ < sizeOf (Level.imax l₁ l₂) := by
+    simp only [sizeOf, size]
+    omega
+  omega
+  have : sizeOf l₂ < sizeOf (Level.imax l₁ l₂) := by
+    simp only [sizeOf, size]
+    omega
+  omega
+end
+
+end Level
+
+#eval Level.normalize (.succ (.max (.param `a .zero) (.param `b .zero)))
+partial def test : Level.normalize (.max (.param `a .zero) (.param `b .zero)) = Level.normalize (.max (.param `b .zero) (.param `a .zero)) := rfl
 
 universe u v
 
