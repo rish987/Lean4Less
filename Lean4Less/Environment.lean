@@ -12,17 +12,60 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 open Lean
 open Lean.Kernel.Environment
 
-def checkConstantVal (env : Kernel.Environment) (v : ConstantVal) (allowPrimitive := false) : M (PExpr) := do
+def Lean.Kernel.Environment.addWithLevels (env : Lean.Kernel.Environment) (ci : Lean.ConstantInfo) : Except KernelException Lean.Kernel.Environment := do
+  let lparams := ci.levelParams
+  let type := ci.type
+  let newType := sorry
+  let newCi ← match ci with
+    | .defnInfo     {value := v, ..}
+    | .thmInfo      {value := v, ..}
+    | .opaqueInfo   {value := v, ..} =>
+      let newValue := sorry
+      match ci with
+        | .defnInfo   d => pure $ .defnInfo   {d with type := newType, value := newValue}
+        | .thmInfo    d => pure $ .thmInfo    {d with type := newType, value := newValue}
+        | .opaqueInfo d => pure $ .opaqueInfo {d with type := newType, value := newValue}
+        | _ => unreachable!
+    | .axiomInfo    d => pure $ .axiomInfo  {d with type := newType}
+    | .quotInfo     d => pure $ .quotInfo   {d with type := newType}
+    | .inductInfo   d => pure $ .inductInfo {d with type := newType}
+    | .ctorInfo     d => pure $ .ctorInfo   {d with type := newType}
+    | .recInfo      d@{rules := rs, ..} => 
+      let newRules := sorry
+      pure $ .recInfo {d with type := newType, rules := newRules}
+  pure $ env.add newCi
+
+@[inline] def withLparamsToFVars [MonadWithReaderOf Context m] (lparamsToFVars : Std.HashMap Name FVarId) (x : m α) : m α :=
+  withReader (fun l => {l with lparamsToFVars}) x
+
+def withExpLParams (params : List Name) (lamBind : Bool) (m : M Expr) : M PExpr := do
+  let rec loop univNames lfvars lparamsToFVars := do 
+    match univNames with
+    | n::ns => withNewFVar 0 n (Expr.const `L4L.Level []).toPExpr default fun lv => do
+      let lparamsToFVars := lparamsToFVars.insert n lv.fvarId
+      let lfvars := lfvars.push lv.toExpr
+      loop ns lfvars lparamsToFVars
+    | [] => 
+      withLparamsToFVars lparamsToFVars do
+        withReader ({ · with lparams := params}) do
+          let e ← m
+          if lamBind then
+            pure $ (← getLCtx).mkLambda lfvars e |>.toPExpr
+          else
+            pure $ (← getLCtx).mkForall lfvars e |>.toPExpr
+  let expLparams := if (← read).opts.univs then params else []
+  loop expLparams #[] default
+
+def checkConstantVal (env : Kernel.Environment) (v : ConstantVal) (allowPrimitive := false) : M PExpr := do
   env.checkName v.name allowPrimitive
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
-  let (typeType, type'?) ← check v.type v.levelParams
-  let type' := type'?.getD v.type.toPExpr
-  let (sort, typeTypeEqSort?) ← ensureSort typeType v.levelParams type'
-  let type'' ← maybeCast typeTypeEqSort? typeType sort type' v.levelParams
-  let ret ← insertInitLets type''
-  -- isValidApp ret v.levelParams
-  pure ret
+  withExpLParams v.levelParams false do
+    let (typeType, type'?) ← check v.type v.levelParams
+    let type' := type'?.getD v.type.toPExpr
+    let (sort, typeTypeEqSort?) ← ensureSort typeType v.levelParams type'
+    let type'' ← maybeCast typeTypeEqSort? typeType sort type' v.levelParams
+    insertInitLets type''
 
 def patchAxiom (env : Kernel.Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
@@ -42,49 +85,52 @@ def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomRe
     let env' := env.add (.defnInfo {v with type})
     checkNoMVarNoFVar env' v.name v.value
     M.run env' v.name (safety := .unsafe) (lctx := {}) opts do
-      let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
-      let value' := value'?.getD v.value.toPExpr
-      let (true, value) ← smartCast valueType type value' v.levelParams |
-        if allowAxiomReplace then
-          return .axiomInfo {v with type, isUnsafe := false}
-        else
+      let value ← withExpLParams v.levelParams true do
+        let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
+        let value' := value'?.getD v.value.toPExpr
+        let (true, value) ← smartCast valueType type value' v.levelParams |
+          -- if allowAxiomReplace then
+          --   return .axiomInfo {v with type, isUnsafe := false}
+          -- else
           throw <| .declTypeMismatch env' (.defnDecl v) valueType
-      let value ← insertInitLets value
+        -- isValidApp value v.levelParams
+        insertInitLets value
       if type.toExpr.hasFVar || value.toExpr.hasFVar then
         throw $ .other "fvar in translated term"
-      -- isValidApp value v.levelParams
       let v := {v with type, value}
       return .defnInfo v
   else
     let type ← M.run env v.name (safety := .safe) (lctx := {}) opts do
       checkConstantVal env v.toConstantVal (← checkPrimitiveDef env v)
+    checkNoMVarNoFVar env v.name v.value
 
     M.run env v.name (safety := .safe) (lctx := {}) opts do
-      -- dbg_trace s!"DBG[25]: Environment.lean:49: v.name={v.name}"
-      checkNoMVarNoFVar env v.name v.value
-      -- dbg_trace s!"DBG[34]: Environment.lean:52 (after checkNoMVarNoFVar env v.name v.value)"
-      let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
-      -- dbg_trace s!"DBG[98]: Environment.lean:54: valueType={valueType}"
-      let value' := value'?.getD v.value.toPExpr
-      -- dbg_trace s!"DBG[33]: Environment.lean:54 (after let value := value?.getD v.value.toPExpr)"
-      -- dbg_trace s!"DBG[31]: Environment.lean:57: valueTypeEqtype?={valueTypeEqtype?}"
+      let value ← withExpLParams v.levelParams true do
+        -- dbg_trace s!"DBG[25]: Environment.lean:49: v.name={v.name}"
+        -- dbg_trace s!"DBG[25]: Environment.lean:49: v.name={v.name}"
+        -- dbg_trace s!"DBG[34]: Environment.lean:52 (after checkNoMVarNoFVar env v.name v.value)"
+        let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
+        -- dbg_trace s!"DBG[98]: Environment.lean:54: valueType={valueType}"
+        let value' := value'?.getD v.value.toPExpr
+        -- dbg_trace s!"DBG[33]: Environment.lean:54 (after let value := value?.getD v.value.toPExpr)"
+        -- dbg_trace s!"DBG[31]: Environment.lean:57: valueTypeEqtype?={valueTypeEqtype?}"
 
-      let (true, value) ← smartCast valueType type value' v.levelParams |
-        if allowAxiomReplace then
-          return .axiomInfo {v with type, isUnsafe := false}
-        else
+        let (true, value) ← smartCast valueType type value' v.levelParams |
+          -- if allowAxiomReplace then
+          --   return .axiomInfo {v with type, isUnsafe := false}
+          -- else
           throw <| .declTypeMismatch env (.defnDecl v) valueType
-      -- dbg_trace s!"DBG[0]: Methods.lean:202: patch={(Lean.collectFVars default type.toExpr).fvarIds.map fun v => v.name}"
-      -- dbg_trace s!"DBG[1]: Methods.lean:202: patch={(Lean.collectFVars default value'.toExpr).fvarIds.map fun v => v.name}"
-      -- dbg_trace s!"DBG[2]: Methods.lean:202: patch={(Lean.collectFVars default valueType.toExpr).fvarIds.map fun v => v.name}"
-      -- dbg_trace s!"DBG[3]: Methods.lean:202: patch={← (Lean.collectFVars default value.toExpr).fvarIds.mapM fun v => do pure (v.name, (← get).fvarRegistry.get? v.name)}"
-      -- dbg_trace s!"DBG[15]: Environment.lean:65 (after let value ← smartCast valueType type v…)"
-      let value ← insertInitLets value
-      -- isValidApp value v.levelParams
+        -- dbg_trace s!"DBG[0]: Methods.lean:202: patch={(Lean.collectFVars default type.toExpr).fvarIds.map fun v => v.name}"
+        -- dbg_trace s!"DBG[1]: Methods.lean:202: patch={(Lean.collectFVars default value'.toExpr).fvarIds.map fun v => v.name}"
+        -- dbg_trace s!"DBG[2]: Methods.lean:202: patch={(Lean.collectFVars default valueType.toExpr).fvarIds.map fun v => v.name}"
+        -- dbg_trace s!"DBG[3]: Methods.lean:202: patch={← (Lean.collectFVars default value.toExpr).fvarIds.mapM fun v => do pure (v.name, (← get).fvarRegistry.get? v.name)}"
+        -- dbg_trace s!"DBG[15]: Environment.lean:65 (after let value ← smartCast valueType type v…)"
+        insertInitLets value
+        -- isValidApp value v.levelParams
+        -- dbg_trace s!"DBG[35]: Environment.lean:64 (after let v := v with type, value)"
       let v := {v with type, value}
       if type.toExpr.hasFVar || value.toExpr.hasFVar then
         throw $ .other "fvar in translated term"
-      -- dbg_trace s!"DBG[35]: Environment.lean:64 (after let v := v with type, value)"
       return (.defnInfo v)
 
 def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
@@ -92,46 +138,45 @@ def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace 
   -- TODO(Leo): we must add support for handling tasks here
   let type ← M.run env v.name (safety := .safe) (lctx := {}) (opts := opts) do
     checkConstantVal env v.toConstantVal
+  checkNoMVarNoFVar env v.name v.value
 
-  let (value?) ← M.run env v.name (safety := .safe) (lctx := {}) opts do
-    checkNoMVarNoFVar env v.name v.value
-    let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
-    let value' := value'?.getD v.value.toPExpr
-    let (true, ret) ← smartCast valueType type value' v.levelParams |
-      if allowAxiomReplace then
-        pure none
-      else
+  M.run env v.name (safety := .safe) (lctx := {}) opts do
+    let value ← withExpLParams v.levelParams true do
+      let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
+      let value' := value'?.getD v.value.toPExpr
+      let (true, ret) ← smartCast valueType type value' v.levelParams |
+        -- if allowAxiomReplace then
+        --   pure none
+        -- else
         throw <| .declTypeMismatch env (.thmDecl v) valueType
-    let ret ← insertInitLets ret
-    -- isValidApp ret v.levelParams
-    pure (.some ret)
-
-  if let .some value := value? then
+      insertInitLets ret
+      -- isValidApp ret v.levelParams
     let v := {v with type, value}
     if type.toExpr.hasFVar || value.toExpr.hasFVar then
       throw $ .other "fvar in translated theorem type/value"
     return .thmInfo v
-  else
-    let v := {v with type, isUnsafe := false}
-    if type.toExpr.hasFVar then
-      throw $ .other "fvar in translated axiom type"
-    return .axiomInfo v
+  -- if let .some value := value? then
+  -- else
+  --   let v := {v with type, isUnsafe := false}
+  --   if type.toExpr.hasFVar then
+  --     throw $ .other "fvar in translated axiom type"
+  --   return .axiomInfo v
 
 def patchOpaque (env : Kernel.Environment) (v : OpaqueVal) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
   let type ← M.run env v.name (safety := .safe) (lctx := {}) opts do
     checkConstantVal env v.toConstantVal
-  let value ← M.run env v.name (safety := .safe) (lctx := {}) opts do
-    let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
-    let value' := value'?.getD v.value.toPExpr
-    let (true, ret) ← smartCast valueType type value' v.levelParams |
-      throw <| .declTypeMismatch env (.opaqueDecl v) valueType
-    let ret ← insertInitLets ret
-    pure ret
-  if type.toExpr.hasFVar || value.toExpr.hasFVar then
-    throw $ .other "fvar in translated term"
-  let v := {v with type, value}
-  return .opaqueInfo v
+  M.run env v.name (safety := .safe) (lctx := {}) opts do
+    let value ← withExpLParams v.levelParams true do
+      let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
+      let value' := value'?.getD v.value.toPExpr
+      let (true, ret) ← smartCast valueType type value' v.levelParams |
+        throw <| .declTypeMismatch env (.opaqueDecl v) valueType
+      insertInitLets ret
+    if type.toExpr.hasFVar || value.toExpr.hasFVar then
+      throw $ .other "fvar in translated term"
+    let v := {v with type, value}
+    return .opaqueInfo v
 
 def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : TypeCheckerOpts) :
     Except KernelException (List ConstantInfo) := do
@@ -156,12 +201,13 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
   let mut newvs' := #[]
   for (v', type) in vs'.zip types do
     let newv' ← M.run env' `mutual (safety := v₀.safety) (lctx := {}) opts do
-      checkNoMVarNoFVar env' v'.name v'.value
-      let (valueType, value'?) ← TypeChecker.check v'.value v'.levelParams
-      let value' := value'?.getD v'.value.toPExpr
-      let (true, value) ← smartCast valueType type value' vs[0]!.levelParams |
-        throw <| .declTypeMismatch env' (.mutualDefnDecl vs') valueType
-      let value ← insertInitLets value
+      let value ← withExpLParams v'.levelParams true do
+        checkNoMVarNoFVar env' v'.name v'.value
+        let (valueType, value'?) ← TypeChecker.check v'.value v'.levelParams
+        let value' := value'?.getD v'.value.toPExpr
+        let (true, value) ← smartCast valueType type value' vs[0]!.levelParams |
+          throw <| .declTypeMismatch env' (.mutualDefnDecl vs') valueType
+        insertInitLets value
       if type.toExpr.hasFVar || value.toExpr.hasFVar then
         throw $ .other "fvar in translated term"
       pure {v' with value}

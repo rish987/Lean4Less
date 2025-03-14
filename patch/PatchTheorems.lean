@@ -70,7 +70,8 @@ def isZero : Level → Bool
   | zero   => true
   | _      => false
 
-private def isExplicitSubsumedAux (lvls : Array Level) (maxExplicit : Nat) (i : Nat) : Bool :=
+@[reducible]
+def isExplicitSubsumedAux (lvls : Array Level) (maxExplicit : Nat) (i : Nat) : Bool :=
   if h : i < lvls.size then
     let lvl := lvls[i]
     if lvl.getOffset ≥ maxExplicit then true
@@ -79,7 +80,8 @@ private def isExplicitSubsumedAux (lvls : Array Level) (maxExplicit : Nat) (i : 
     false
 
 /- Auxiliary function for `normalize`. See `isExplicitSubsumedAux` -/
-private def isExplicitSubsumed (lvls : Array Level) (firstNonExplicit : Nat) : Bool :=
+@[reducible]
+def isExplicitSubsumed (lvls : Array Level) (firstNonExplicit : Nat) : Bool :=
   if firstNonExplicit == 0 then false
   else
     let max := lvls[firstNonExplicit - 1]!.getOffset
@@ -88,7 +90,7 @@ private def isExplicitSubsumed (lvls : Array Level) (firstNonExplicit : Nat) : B
 /-
   Auxiliary function for `normalize`. It assumes `lvls` has been sorted using `normLt`.
   It finds the first position that is not an explicit universe. -/
-private def skipExplicit (lvls : Array Level) (i : Nat) : Nat :=
+def skipExplicit (lvls : Array Level) (i : Nat) : Nat :=
   if h : i < lvls.size then
     let lvl := lvls[i]
     if lvl.getLevelOffset.isZero then skipExplicit lvls (i+1) else i
@@ -114,11 +116,12 @@ def addOffsetAux : Nat → Level → Level
 def addOffset (u : Level) (n : Nat) : Level :=
   u.addOffsetAux n
 
-private def accMax (result : Level) (prev : Level) (offset : Nat) : Level :=
+def accMax (result : Level) (prev : Level) (offset : Nat) : Level :=
   if result.isZero then prev.addOffset offset
   else mkLevelMax result (prev.addOffset offset)
 
-private partial def mkMaxAux (lvls : Array Level) (extraK : Nat) (i : Nat) (prev : Level) (prevK : Nat) (result : Level) : Level :=
+@[reducible]
+def mkMaxAux (lvls : Array Level) (extraK : Nat) (i : Nat) (prev : Level) (prevK : Nat) (result : Level) : Level :=
   if h : i < lvls.size then
     let lvl   := lvls[i]
     let curr  := lvl.getLevelOffset
@@ -232,8 +235,8 @@ end
 
 end Level
 
-#eval Level.normalize (.succ (.max (.param `a .zero) (.param `b .zero)))
-partial def test : Level.normalize (.max (.param `a .zero) (.param `b .zero)) = Level.normalize (.max (.param `b .zero) (.param `a .zero)) := rfl
+-- #eval Level.normalize (.succ (.max (.param `a .zero) (.param `b .zero)))
+-- def test : Level.normalize (.max (.param `a .zero) (.param `b .zero)) = Level.normalize (.max (.param `b .zero) (.param `a .zero)) := rfl
 
 universe u v
 

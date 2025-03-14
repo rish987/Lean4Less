@@ -577,6 +577,7 @@ namespace ElimNestedInductive
 
 structure Result where
   ngen : NameGenerator
+  -- nexplparams : Nat
   nparams : Nat
   /--
   Mapping from aux inductive type names to their original nested occurrences,

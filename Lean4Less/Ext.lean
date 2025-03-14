@@ -120,6 +120,7 @@ structure TypeChecker.Context : Type where
   pure : Bool := false -- (for debugging purposes)
   forallOpt : Bool := true -- (for debugging purposes)
   const : Name -- (for debugging purposes)
+  lparamsToFVars : Std.HashMap Name FVarId := {}
   /--
   Mapping from free variables to proofs of their equality,
   introduced by isDefEqLambda.
