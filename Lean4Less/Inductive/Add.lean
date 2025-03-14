@@ -3,8 +3,6 @@ import Lean4Less.Methods
 namespace Lean4Less
 open Lean
 
-open private Lean.Kernel.Environment.add from Lean.Environment
-
 namespace AddInductive
 open TypeChecker
 
@@ -157,6 +155,7 @@ def isReflexive (indTypes : Array InductiveType) (indConsts : Array Expr) : Bool
     | _ => false
   indTypes.any fun indType => indType.ctors.any fun ctor => loop ctor.type
 
+variable (add : Kernel.Environment → ConstantInfo → Kernel.Environment)
 /--
 Adds a `ConstantInfo.inductInfo` for each of `indTypes` to `env`.
 -/
@@ -172,7 +171,7 @@ def declareInductiveTypes
       ctors := indType.ctors.map (·.name)
       isRec := isRec indTypes stats.indConsts
       isReflexive := isReflexive indTypes stats.indConsts }
-  infos.foldl Lean.Kernel.Environment.add env
+  infos.foldl add env
 
 def isValidIndAppIdx (stats : InductiveStats) (t : Expr) (i : Nat) : Bool :=
   t.withApp fun I args => Id.run do
@@ -266,7 +265,7 @@ def checkConstructors (indTypes : Array InductiveType)
 /--
 Adds a `ConstantInfo.ctorInfo` for each of the constructors of `indTypes` to `env`.
 -/
-def declareConstructors (stats : InductiveStats) (levelParams : List Name)
+def declareConstructors (add : Kernel.Environment → ConstantInfo → Kernel.Environment) (stats : InductiveStats) (levelParams : List Name)
     (indTypes : Array InductiveType) (isUnsafe : Bool)
     (env : Kernel.Environment) : Kernel.Environment :=
   indTypes.foldl (init := env) fun env indType =>
@@ -276,7 +275,7 @@ def declareConstructors (stats : InductiveStats) (levelParams : List Name)
         | .forallE _ _ body _ => arity (i+1) body
         | _ => i
       let arity := arity 0 type
-      env.add <| .ctorInfo {
+      add env <| .ctorInfo {
         levelParams, type, cidx, isUnsafe
         name := ctor.name
         induct := indType.name
@@ -534,9 +533,9 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
   let indTypes := types.toArray
   Kernel.Environment.checkDuplicatedUnivParams lparams
   checkInductiveTypes nparams indTypes fun stats => do
-  withEnv (declareInductiveTypes stats lparams nparams indTypes isUnsafe numNested) do
+  withEnv (declareInductiveTypes add stats lparams nparams indTypes isUnsafe numNested) do
   checkConstructors indTypes stats isUnsafe
-  withEnv (declareConstructors stats lparams indTypes isUnsafe) do
+  withEnv (declareConstructors add stats lparams indTypes isUnsafe) do
   let elimLevel ← getElimLevel stats indTypes
   mkRecInfos stats indTypes elimLevel fun recInfos => do
   let motives := recInfos.map (·.motive)
@@ -561,7 +560,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
       lctx.mkForall #[info.major] <|
       .app (mkAppN info.motive info.indices) info.major
     let rules ← mkRecRules indTypes elimLevel stats dIdx motives minors
-    env := env.add <| .recInfo {
+    env := add env <| .recInfo {
       name := mkRecName indType.name
       levelParams := getRecLevelParams elimLevel lparams
       type := ty.inferImplicit 1000 false -- note: flag has reversed polarity from C++
@@ -866,6 +865,8 @@ def mkAuxRecNameMap (env' : Kernel.Environment) (types : List InductiveType) :
     auxRecNames := auxRecNames.push auxRecName
   return (auxRecNames.toList, recMap)
 
+variable (add : Kernel.Environment → ConstantInfo → Kernel.Environment)
+
 /--
 Adds the inductive types, constructors, and recursors corresponding to the
 mutual block of inductive declarations `types` to `env`, where `lparams` is a
@@ -936,7 +937,7 @@ def Kernel.Environment.addInductive (env : Kernel.Environment) (lparams : List N
   let res ← ElimNestedInductive.run nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
-  let env' ← AddInductive.run lparams nparams res.types numNested
+  let env' ← AddInductive.run add lparams nparams res.types numNested
     { env, allowPrimitive, safety := if isUnsafe then .unsafe else .safe, const := `inductive, lparams}
   if numNested == 0 then return env'
   let allIndNames := types.map (·.name)
@@ -952,14 +953,14 @@ def Kernel.Environment.addInductive (env : Kernel.Environment) (lparams : List N
         res.restoreCtorName env' rule.ctor
       return { rule with ctor := newCtorName, rhs := newRhs }
     (← MonadState.get).checkName newRecName
-    modify (fun e => e.add <| .recInfo { recInfo with
+    modify (fun e => add env <| .recInfo { recInfo with
       name := newRecName, type := newRecType, all := allIndNames, rules := newRules })
   for indType in types do
     let some (.inductInfo ind) := env'.find? indType.name | unreachable!
-    modify (fun e => e.add <| .inductInfo { ind with all := allIndNames })
+    modify (fun e => add e <| .inductInfo { ind with all := allIndNames })
     for ctorName in ind.ctors do
       let some (.ctorInfo ctor) := env'.find? ctorName | unreachable!
       let newType := res.restoreNested env' ctor.type
-      modify (fun e => e.add <| .ctorInfo { ctor with type := newType })
+      modify (fun e => add e <| .ctorInfo { ctor with type := newType })
     processRec (mkRecName indType.name)
   recNames'.forM processRec

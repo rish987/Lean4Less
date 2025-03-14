@@ -12,60 +12,79 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 open Lean
 open Lean.Kernel.Environment
 
-def Lean.Kernel.Environment.addWithLevels (env : Lean.Kernel.Environment) (ci : Lean.ConstantInfo) : Except KernelException Lean.Kernel.Environment := do
-  let lparams := ci.levelParams
-  let type := ci.type
-  let newType := sorry
-  let newCi ← match ci with
-    | .defnInfo     {value := v, ..}
-    | .thmInfo      {value := v, ..}
-    | .opaqueInfo   {value := v, ..} =>
-      let newValue := sorry
-      match ci with
-        | .defnInfo   d => pure $ .defnInfo   {d with type := newType, value := newValue}
-        | .thmInfo    d => pure $ .thmInfo    {d with type := newType, value := newValue}
-        | .opaqueInfo d => pure $ .opaqueInfo {d with type := newType, value := newValue}
-        | _ => unreachable!
-    | .axiomInfo    d => pure $ .axiomInfo  {d with type := newType}
-    | .quotInfo     d => pure $ .quotInfo   {d with type := newType}
-    | .inductInfo   d => pure $ .inductInfo {d with type := newType}
-    | .ctorInfo     d => pure $ .ctorInfo   {d with type := newType}
-    | .recInfo      d@{rules := rs, ..} => 
-      let newRules := sorry
-      pure $ .recInfo {d with type := newType, rules := newRules}
-  pure $ env.add newCi
+structure LM.Context where
+  lctx : LocalContext := {}
+  -- lparams : List Name := []
+  lparamsToFVars : Std.HashMap Name FVarId := {}
 
-@[inline] def withLparamsToFVars [MonadWithReaderOf Context m] (lparamsToFVars : Std.HashMap Name FVarId) (x : m α) : m α :=
+abbrev LM := ReaderT LM.Context Id
+
+instance : MonadLCtx LM where
+  getLCtx := return (← read).lctx
+
+instance (priority := low) : MonadWithReaderOf LocalContext LM where
+  withReader f := withReader fun s => { s with lctx := f s.lctx }
+
+@[inline] def withLCtx [MonadWithReaderOf LocalContext m] (lctx : LocalContext) (x : m α) : m α :=
+  withReader (fun _ => lctx) x
+
+@[inline] def withLparamsToFVars [MonadWithReaderOf LM.Context m] (lparamsToFVars : Std.HashMap Name FVarId) (x : m α) : m α :=
   withReader (fun l => {l with lparamsToFVars}) x
 
-def withExpLParams (params : List Name) (lamBind : Bool) (m : M Expr) : M PExpr := do
+def transL (params : List Name) (lamBind : Bool) (e : Expr) : LM Expr := do
+  if params.length == 0 then return e
   let rec loop univNames lfvars lparamsToFVars := do 
     match univNames with
-    | n::ns => withNewFVar 0 n (Expr.const `L4L.Level []).toPExpr default fun lv => do
-      let lparamsToFVars := lparamsToFVars.insert n lv.fvarId
-      let lfvars := lfvars.push lv.toExpr
-      loop ns lfvars lparamsToFVars
+    | n::ns =>
+      let name := n
+      let id : FVarId := {name := `lvl_ ++ n}
+      withLCtx ((← getLCtx).mkLocalDecl id name (Expr.const `L4L.Level []) .implicit) do
+        let lparamsToFVars := lparamsToFVars.insert n id
+        let lfvars := lfvars.push (Expr.fvar id)
+        loop ns lfvars lparamsToFVars
     | [] => 
       withLparamsToFVars lparamsToFVars do
-        withReader ({ · with lparams := params}) do
-          let e ← m
+          let e ← sorry
           if lamBind then
             pure $ (← getLCtx).mkLambda lfvars e |>.toPExpr
           else
             pure $ (← getLCtx).mkForall lfvars e |>.toPExpr
-  let expLparams := if (← read).opts.univs then params else []
-  loop expLparams #[] default
+  loop params #[] default
+
+def _root_.Lean.Kernel.Environment.addWithLevels (env : Lean.Kernel.Environment) (ci : Lean.ConstantInfo) (elimUnivs : Bool) : Lean.Kernel.Environment := Id.run do
+  if not elimUnivs then
+    return env.add ci
+  let lparams := ci.levelParams
+  let type := ci.type
+  let newType := transL lparams false type |>.run {}
+  let newCi ← match ci with
+    | .defnInfo     {value := v, ..}
+    | .thmInfo      {value := v, ..}
+    | .opaqueInfo   {value := v, ..} =>
+      let newValue := transL lparams true v |>.run {}
+      match ci with
+        | .defnInfo   d => pure $ .defnInfo   {d with type := newType, value := newValue, levelParams := []}
+        | .thmInfo    d => pure $ .thmInfo    {d with type := newType, value := newValue, levelParams := []}
+        | .opaqueInfo d => pure $ .opaqueInfo {d with type := newType, value := newValue, levelParams := []}
+        | _ => unreachable!
+    | .axiomInfo    d => pure $ .axiomInfo  {d with type := newType, levelParams := []}
+    | .quotInfo     d => pure $ .quotInfo   {d with type := newType, levelParams := []}
+    | .inductInfo   d => pure $ .inductInfo {d with type := newType, levelParams := []}
+    | .ctorInfo     d => pure $ .ctorInfo   {d with type := newType, levelParams := []}
+    | .recInfo      d@{rules := rs, ..} => 
+      let newRules := rs.map fun r => {r with rhs := transL lparams true r.rhs |>.run {}}
+      pure $ .recInfo {d with type := newType, rules := newRules, levelParams := []}
+  pure $ env.add newCi
 
 def checkConstantVal (env : Kernel.Environment) (v : ConstantVal) (allowPrimitive := false) : M PExpr := do
   env.checkName v.name allowPrimitive
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
-  withExpLParams v.levelParams false do
-    let (typeType, type'?) ← check v.type v.levelParams
-    let type' := type'?.getD v.type.toPExpr
-    let (sort, typeTypeEqSort?) ← ensureSort typeType v.levelParams type'
-    let type'' ← maybeCast typeTypeEqSort? typeType sort type' v.levelParams
-    insertInitLets type''
+  let (typeType, type'?) ← check v.type v.levelParams
+  let type' := type'?.getD v.type.toPExpr
+  let (sort, typeTypeEqSort?) ← ensureSort typeType v.levelParams type'
+  let type'' ← maybeCast typeTypeEqSort? typeType sort type' v.levelParams
+  insertInitLets type''
 
 def patchAxiom (env : Kernel.Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
     Except KernelException ConstantInfo := do
@@ -82,10 +101,10 @@ def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomRe
     -- Meta definition can be recursive.
     -- So, we check the header, add, and then type check the body.
     let type ← (checkConstantVal env v.toConstantVal).run env v.name (safety := .unsafe) (opts := opts)
-    let env' := env.add (.defnInfo {v with type})
+    let env' := env.addWithLevels (.defnInfo {v with type}) opts.univs
     checkNoMVarNoFVar env' v.name v.value
     M.run env' v.name (safety := .unsafe) (lctx := {}) opts do
-      let value ← withExpLParams v.levelParams true do
+      let value ← do
         let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
         let value' := value'?.getD v.value.toPExpr
         let (true, value) ← smartCast valueType type value' v.levelParams |
@@ -105,7 +124,7 @@ def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomRe
     checkNoMVarNoFVar env v.name v.value
 
     M.run env v.name (safety := .safe) (lctx := {}) opts do
-      let value ← withExpLParams v.levelParams true do
+      let value ← do
         -- dbg_trace s!"DBG[25]: Environment.lean:49: v.name={v.name}"
         -- dbg_trace s!"DBG[25]: Environment.lean:49: v.name={v.name}"
         -- dbg_trace s!"DBG[34]: Environment.lean:52 (after checkNoMVarNoFVar env v.name v.value)"
@@ -141,7 +160,7 @@ def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace 
   checkNoMVarNoFVar env v.name v.value
 
   M.run env v.name (safety := .safe) (lctx := {}) opts do
-    let value ← withExpLParams v.levelParams true do
+    let value ← do
       let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
       let value' := value'?.getD v.value.toPExpr
       let (true, ret) ← smartCast valueType type value' v.levelParams |
@@ -167,7 +186,7 @@ def patchOpaque (env : Kernel.Environment) (v : OpaqueVal) (opts : TypeCheckerOp
   let type ← M.run env v.name (safety := .safe) (lctx := {}) opts do
     checkConstantVal env v.toConstantVal
   M.run env v.name (safety := .safe) (lctx := {}) opts do
-    let value ← withExpLParams v.levelParams true do
+    let value ← do
       let (valueType, value'?) ← TypeChecker.check v.value v.levelParams
       let value' := value'?.getD v.value.toPExpr
       let (true, ret) ← smartCast valueType type value' v.levelParams |
@@ -196,12 +215,12 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
   let mut vs' := []
   for (type, v) in types.zip vs do
     let v' := {v with type}
-    env' := env'.add (.defnInfo v')
+    env' := env'.addWithLevels (.defnInfo v') opts.univs
     vs' := vs'.append [v']
   let mut newvs' := #[]
   for (v', type) in vs'.zip types do
     let newv' ← M.run env' `mutual (safety := v₀.safety) (lctx := {}) opts do
-      let value ← withExpLParams v'.levelParams true do
+      let value ← do
         checkNoMVarNoFVar env' v'.name v'.value
         let (valueType, value'?) ← TypeChecker.check v'.value v'.levelParams
         let value' := value'?.getD v'.value.toPExpr
@@ -217,24 +236,25 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
 /-- Type check given declaration and add it to the environment -/
 def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
     Except KernelException Kernel.Environment := do
+  let add env ci := env.addWithLevels ci opts.univs
   match decl with
   | .axiomDecl v =>
     let v ← patchAxiom env v opts
-    return env.add v
+    pure $ add env v
   | .defnDecl v =>
     let v ← patchDefinition env v allowAxiomReplace opts
-    return env.add v
+    pure $ add env v
   | .thmDecl v =>
     let v ← patchTheorem env v allowAxiomReplace opts
-    return env.add v
+    pure $ add env v
   | .opaqueDecl v =>
     let v ← patchOpaque env v opts
-    return env.add v
+    pure $ add env v
   | .mutualDefnDecl vs =>
     let vs ← patchMutual env vs opts
-    return vs.foldl (init := env) (fun env v => env.add v)
+    vs.foldlM (init := env) (fun env v => pure $ add env v)
   | .quotDecl =>
     addQuot env
   | .inductDecl lparams nparams types isUnsafe =>
     let allowPrimitive ← checkPrimitiveInductive env lparams nparams types isUnsafe opts
-    addInductive env lparams nparams types isUnsafe allowPrimitive -- TODO handle any possible patching in inductive type declarations (low priority)
+    addInductive add env lparams nparams types isUnsafe allowPrimitive -- TODO handle any possible patching in inductive type declarations (low priority)
