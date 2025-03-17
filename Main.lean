@@ -104,6 +104,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let univs : Bool := p.hasFlag "univs"
   let klr : Bool := p.hasFlag "klike-red"
   let opts : Lean4Less.TypeCheckerOpts := {proofIrrelevance := pi, kLikeReduction := klr, univs := univs}
+  let addDecl := fun d b => @Lean4Less.addDecl d b
   match mod with
     | .anonymous => throw <| IO.userError s!"Could not resolve module: {mod}"
     | m =>
@@ -159,7 +160,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
 
         IO.println s!">>init module"
         let patchConsts ← getDepConstsEnv lemmEnv Lean4Less.patchConsts overrides
-        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted) (initConsts := #[`L4L.Level.normalize])
+        let (env, aborted) ← replay (addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted) (initConsts := #[`L4L.Level.normalize])
         mkMod #[] env patchPreludeModName aborted
 
         let (aborted, s) ← ForEachModuleM.run env do
@@ -208,7 +209,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
               else
                 pure $ (accNewConstants, accOverrides)
             IO.println s!">>{dn} module [{(← get).count}/{numMods}]"
-            let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env (printProgress := true) (op := "patch") (aborted := aborted)
+            let (env, aborted) ← replay (addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env (printProgress := true) (op := "patch") (aborted := aborted)
             let imports := if dn == `Init.Prelude then
                 #[{module := `Init.PatchPrelude}] ++ d.imports
               else
@@ -217,8 +218,16 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
             mkMod imports env dn aborted
             modify fun s => {s with env}
             pure aborted
-        let env := s.env
-        replayFromEnv Lean4Lean.addDecl m env.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction})
+        let mut env := (← mkEmptyEnvironment).toKernelEnv
+        if opts.univs then
+          for (_, ci) in s.env.constants do
+            env := env.addLevelTrans ci
+          -- env := s.env
+        else
+          env := s.env
+           
+        dbg_trace s!"DBG[4]: Main.lean:227 {env.constants.contains `String}"
+        replayFromEnv addDecl m env.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction}) (initConsts := #[`String, `Lean.Name, `Lean.Name.str, `Lean.Name.anonymous])
         -- forEachModule' (imports := #[m]) (init := env) fun e dn d => do
         --   -- let newConstants := d.constNames.zip d.constants |>.foldl (init := default) fun acc (n, ci) => acc.insert n ci
         --

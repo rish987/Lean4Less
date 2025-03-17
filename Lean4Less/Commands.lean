@@ -141,13 +141,15 @@ def transL4L (n : Array Name) (env? : Option Kernel.Environment := none) : Lean.
     )
   transL4L' n env
 
+def addDeclD := fun d b => @Lean4Lean.addDecl d b
+
 def checkL4L (ns : Array Name) (env : Kernel.Environment) (printOutput := true) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) (deps := false) : IO Environment := do
   let env ← transL4L' ns env (pp := printOutput) (printProgress := printProgress) (interactive := interactive) (opts := opts) (dbgOnly := dbgOnly)
   let ns := ns
   let nSet := ns.foldl (init := default) fun acc n => acc.insert n
   -- unsafe replayFromEnv Lean4Lean.addDecl env.mainModule env.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := false, kLikeReduction := false})
 
-  let (_, checkEnv) ← checkConstants (printErr := true) env nSet Lean4Lean.addDecl (printProgress := printProgress) (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction}) (interactive := interactive) (dbgOnly := false) (overrides := default) (deps := deps) (write := false)
+  let (_, checkEnv) ← checkConstants (printErr := true) env nSet addDeclD (printProgress := printProgress) (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction}) (interactive := interactive) (dbgOnly := false) (overrides := default) (deps := deps) (write := false)
 
   -- let env' ← transL4L' ns env
   -- for n in ns do
@@ -164,10 +166,10 @@ elab "#trans_l4l " i:ident : command => do
   _ ← transL4L #[i.getId]
 
 elab "#check_only " i:ident : command => do
-  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) (Lean4Lean.addDecl (verbose := true)) (opts := {}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
+  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) (addDeclD (verbose := true)) (opts := {}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
 
 elab "#check_off " i:ident : command => do
-  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) Lean4Lean.addDecl (opts := {proofIrrelevance := false, kLikeReduction := false}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
+  _ ← checkConstants (printErr := true) (← getEnv) (.insert default i.getId) addDeclD (opts := {proofIrrelevance := false, kLikeReduction := false}) (interactive := true) (overrides := getOverrides (← getEnv).toKernelEnv)
 
 elab "#check_l4l " i:ident : command => do
   _ ← checkL4L #[i.getId] (← getEnv).toKernelEnv (interactive := true)

@@ -191,6 +191,7 @@ def normalize (l : Level) : Level :=
     let k := l.getOffset
     let u := l.getLevelOffset
     have hul : sizeOf u ≤ sizeOf l := by
+      -- sorry
       apply offsetLte
     match u with
     | .max l₁ l₂ =>
@@ -211,6 +212,11 @@ def normalize (l : Level) : Level :=
         addOffset (mkIMaxAux l₁ l₂) k
     | _ => unreachable!
   decreasing_by
+  -- sorry
+  -- sorry
+  -- sorry
+  -- sorry
+  -- sorry
   have : sizeOf l₁ < sizeOf (Level.max l₁ l₂) := by
     simp only [sizeOf, size]
     omega
