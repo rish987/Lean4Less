@@ -16,7 +16,7 @@ open Lean.Kernel.Environment
 structure LM.Context where
   lctx : LocalContext := {}
   -- lparams : List Name := []
-  lparamsToFVars : Std.HashMap Name FVarId := {}
+  lparamsToFVars : Std.HashMap Name (Nat × FVarId) := {}
 
 abbrev LM := ReaderT LM.Context Id
 
@@ -29,7 +29,7 @@ instance (priority := low) : MonadWithReaderOf LocalContext LM where
 @[inline] def withLCtx [MonadWithReaderOf LocalContext m] (lctx : LocalContext) (x : m α) : m α :=
   withReader (fun _ => lctx) x
 
-@[inline] def withLparamsToFVars [MonadWithReaderOf LM.Context m] (lparamsToFVars : Std.HashMap Name FVarId) (x : m α) : m α :=
+@[inline] def withLparamsToFVars [MonadWithReaderOf LM.Context m] (lparamsToFVars : Std.HashMap Name (Nat × FVarId)) (x : m α) : m α :=
   withReader (fun l => {l with lparamsToFVars}) x
 
 def levelTransLevel (l : Level) : LM Expr := do
@@ -39,10 +39,11 @@ def levelTransLevel (l : Level) : LM Expr := do
   | .max  l l' => pure (.app (.app (.const ``L4L.Level.max []) (← levelTransLevel l)) (← levelTransLevel l'))
   | .imax l l' => pure (.app (.app (.const ``L4L.Level.imax []) (← levelTransLevel l)) (← levelTransLevel l'))
   | .param n =>
-    let some fid := ((← read).lparamsToFVars.get? n) |
+    let some (i, fid) := ((← read).lparamsToFVars.get? n) |
       dbg_trace s!"failed to find L4L.Level fvar corresponding to '{n}'"
       unreachable!
-    pure (.app (.app (.const ``L4L.Level.param []) (toExpr n)) (.fvar fid))
+    let iExpr := if i == Nat.zero then .const `Nat.zero [] else toExpr i
+    pure (.app (.app (.const ``L4L.Level.param []) iExpr) (.fvar fid))
   | .mvar _ => 
     dbg_trace s!"encountered unexpected level mvar"
     unreachable!
@@ -67,15 +68,15 @@ def levelTransExpr (e : Expr) : LM Expr := do
 
 def levelTransAndBind (params : List Name) (lamBind : Bool) (e : Expr) : LM Expr := do
   if params.length == 0 then return e
-  let rec loop univNames lfvars lparamsToFVars := do 
+  let rec loop i univNames lfvars lparamsToFVars := do 
     match univNames with
     | n::ns =>
       let name := n
       let id : FVarId := {name := `lvl_ ++ n}
       withLCtx ((← getLCtx).mkLocalDecl id name (Expr.const `L4L.Level []) .implicit) do
-        let lparamsToFVars := lparamsToFVars.insert n id
+        let lparamsToFVars := lparamsToFVars.insert n (i, id)
         let lfvars := lfvars.push (Expr.fvar id)
-        loop ns lfvars lparamsToFVars
+        loop (i + 1) ns lfvars lparamsToFVars
     | [] => 
       withLparamsToFVars lparamsToFVars do
         let e ← levelTransExpr e
@@ -83,7 +84,7 @@ def levelTransAndBind (params : List Name) (lamBind : Bool) (e : Expr) : LM Expr
           pure $ (← getLCtx).mkLambda lfvars e |>.toPExpr
         else
           pure $ (← getLCtx).mkForall lfvars e |>.toPExpr
-  loop params #[] default
+  loop 0 params #[] default
 
 def _root_.Lean.Kernel.Environment.addLevelTrans (env : Lean.Kernel.Environment) (ci : Lean.ConstantInfo) : Lean.Kernel.Environment := Id.run do
   if not (env.constants.contains `L4L.Level) then
@@ -301,6 +302,9 @@ def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (indTypeOnly := 
   | .quotDecl =>
     addQuot env add
   | .inductDecl lparams nparams types isUnsafe =>
-    let allowPrimitive ← checkPrimitiveInductive env lparams nparams types isUnsafe opts
+    let allowPrimitive ← if not indTypeOnly then
+        checkPrimitiveInductive env lparams nparams types isUnsafe opts
+      else
+        pure true
     let ret ← addInductive add env lparams nparams types isUnsafe allowPrimitive (typesOnly := indTypeOnly) -- TODO handle any possible patching in inductive type declarations (low priority)
     pure ret

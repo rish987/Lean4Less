@@ -41,7 +41,7 @@ dependencies in the patched versions of their types/values.
 -/
 def patchConsts : Array Name := #[
 `L4L.Level,
-`L4L.Level.normalize,
+-- `L4L.Level.normalize,
 
 `L4L.prfIrrel,
 `L4L.forallEqUV',
