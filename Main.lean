@@ -18,18 +18,20 @@ open Cli
 
 open private Lean.Kernel.Environment.add markQuotInit from Lean.Environment
 
-def add' (env : Kernel.Environment) (ci : ConstantInfo) : Kernel.Environment :=
-  let env := match ci with
+def add' (env : Environment) (ci : ConstantInfo) : Environment :=
+  let kenv := env.toKernelEnv
+  let kenv := match ci with
     | .quotInfo _ =>
-      markQuotInit env
-    | _ => env
-  env.add ci
+      markQuotInit kenv
+    | _ => kenv
+  let kenv := kenv.add ci
+  updateBaseAfterKernelAdd env kenv
 
 def outDir : System.FilePath := System.mkFilePath [".", "out"]
 
 structure ForEachModuleState where
   moduleNameSet : NameHashSet := {}
-  env : Kernel.Environment
+  env : Environment
   count := 0
 
 -- def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx) (modIdx : Nat) (cname : Name) : IO α := do
@@ -39,7 +41,7 @@ structure ForEachModuleState where
 
 abbrev ForEachModuleM := StateRefT ForEachModuleState IO
 
-@[inline] nonrec def ForEachModuleM.run (env : Kernel.Environment) (x : ForEachModuleM α) (s : ForEachModuleState := {env}) : IO (α × ForEachModuleState) :=
+@[inline] nonrec def ForEachModuleM.run (env : Environment) (x : ForEachModuleM α) (s : ForEachModuleState := {env}) : IO (α × ForEachModuleState) :=
   x.run s
 
 partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × ModuleData) := do
@@ -68,16 +70,24 @@ partial def forEachModule' (f : Name → ModuleData → NameSet → ForEachModul
       aborted ← f n m aborted
   pure aborted
 
-def mkModuleData (imports : Array Import) (env : Kernel.Environment) : IO ModuleData := do
+def mkModuleData (imports : Array Import) (env : Environment) (newEntries : Array (Name × Array EnvExtensionEntry) := #[]) : IO ModuleData := do
+  let pExts ← persistentEnvExtensionsRef.get
+  let entries := pExts.map fun pExt => Id.run do
+    -- get state from `checked` at the end if `async`; it would otherwise panic
+    let mut asyncMode := pExt.toEnvExtension.asyncMode
+    if asyncMode matches .async then
+      asyncMode := .sync
+    let state := pExt.getState (asyncMode := asyncMode) env
+    (pExt.name, pExt.exportEntriesFn state)
   -- let pExts ← persistentEnvExtensionsRef.get
   -- let entries := pExts.map fun pExt =>
   --   let state := pExt.getState env
   --   (pExt.name, pExt.exportEntriesFn state)
-  let constNames := env.constants.foldStage2 (fun names name _ => names.push name) #[]
-  let constants  := env.constants.foldStage2 (fun cs _ c => cs.push c) #[]
+  let constNames := env.toKernelEnv.constants.foldStage2 (fun names name _ => names.push name) #[]
+  let constants  := env.toKernelEnv.constants.foldStage2 (fun cs _ c => cs.push c) #[]
   return {
     extraConstNames := #[],
-    imports, constNames, constants, entries := default
+    imports, constNames, constants, entries := entries ++ newEntries
   }
 
 def patchPreludeModName := `Init.PatchPrelude
@@ -112,10 +122,10 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         throw $ IO.userError $ "elab of patching defs failed"
       if let some onlyConsts := onlyConsts? then
         Lean.withImportModules #[{module := mod}] {} 0 fun env => do
-          let mut env := env.toKernelEnv
+          let mut env := env
           for (_, c) in lemmEnv.constants do
             env := add' env c
-          _ ← Lean4Less.checkL4L (onlyConsts.map (·.toName)) env (printProgress := true) (printOutput := p.hasFlag "print") (opts := opts) (dbgOnly := dbgOnly) (deps := not dbgOnly)
+          _ ← Lean4Less.checkL4L (onlyConsts.map (·.toName)) env.toKernelEnv (printProgress := true) (printOutput := p.hasFlag "print") (opts := opts) (dbgOnly := dbgOnly) (deps := not dbgOnly)
       else
         let outDir := ((← IO.Process.getCurrentDir).join "out")
         let abortedFile := outDir.join "aborted.txt"
@@ -142,8 +152,8 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
             pure default
         -- dbg_trace s!"DBG[39]: Main.lean:117: abortedTxtSplit={aborted.toList}"
         IO.FS.createDirAll outDir
-        let mkMod imports env n aborted := do
-          let mod ← mkModuleData imports env
+        let mkMod imports env n aborted (newEntries := #[]) := do
+          let mod ← mkModuleData imports env newEntries
           let modPath := (modToFilePath outDir n "olean")
           let some modParent := modPath.parent | panic! s!"could not find parent dir of module {n}"
           IO.FS.createDirAll modParent
@@ -158,9 +168,10 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
 
         IO.println s!">>init module"
         let patchConsts ← getDepConstsEnv lemmEnv Lean4Less.patchConsts overrides
-        let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
+        let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
+        let env := updateBaseAfterKernelAdd lemmEnv kenv
         mkMod #[] env patchPreludeModName aborted
-
+        
 
         let (aborted, s) ← ForEachModuleM.run env do
           forEachModule' (imports := #[m]) (aborted := aborted) fun n d aborted => do
@@ -190,7 +201,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
                 pure false
             unless not skip do return aborted
 
-            let (newConstants, overrides) ← d.constNames.zip d.constants |>.foldlM (init := (default, Lean4Less.getOverrides env)) fun (accNewConstants, accOverrides) (n, ci) => do
+            let (newConstants, overrides) ← d.constNames.zip d.constants |>.foldlM (init := (default, Lean4Less.getOverrides env.toKernelEnv)) fun (accNewConstants, accOverrides) (n, ci) => do
               if not ((← get).env.constants.contains n) then
                 if let some n' := constOverrides[n]? then
                   if let some ci' := lemmEnv.find? n' then
@@ -208,17 +219,18 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
               else
                 pure $ (accNewConstants, accOverrides)
             IO.println s!">>{dn} module [{(← get).count}/{numMods}]"
-            let (env, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env (printProgress := true) (op := "patch") (aborted := aborted)
+            let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env.toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
             let imports := if dn == `Init.Prelude then
                 #[{module := `Init.PatchPrelude}] ++ d.imports
               else
                 d.imports
 
-            mkMod imports env dn aborted
+            let env := updateBaseAfterKernelAdd env kenv
+            mkMod imports env dn aborted (newEntries := d.entries)
             modify fun s => {s with env}
             pure aborted
         let env := s.env
-        replayFromEnv Lean4Lean.addDecl m env.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction})
+        replayFromEnv Lean4Lean.addDecl m env.toKernelEnv.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction})
         -- forEachModule' (imports := #[m]) (init := env) fun e dn d => do
         --   -- let newConstants := d.constNames.zip d.constants |>.foldl (init := default) fun acc (n, ci) => acc.insert n ci
         --
