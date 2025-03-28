@@ -2076,7 +2076,7 @@ def isDefEqProofIrrel (t s : PExpr) : RecLB := do
   -- let (ret, usesPI) ← usesPrfIrrel tType sType
   let (ret, pt?) ← isDefEq 61 tType sType
   if ret then
-    if true then
+    if (← readThe Context).opts.proofIrrelevance then
       let tEqs? ←
         isDefEqProofIrrel' t s tType sType pt? 1
       pure (.true, tEqs?)

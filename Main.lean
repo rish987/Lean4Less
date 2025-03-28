@@ -18,15 +18,6 @@ open Cli
 
 open private Lean.Kernel.Environment.add markQuotInit from Lean.Environment
 
-def add' (env : Environment) (ci : ConstantInfo) : Environment :=
-  let kenv := env.toKernelEnv
-  let kenv := match ci with
-    | .quotInfo _ =>
-      markQuotInit kenv
-    | _ => kenv
-  let kenv := kenv.add ci
-  updateBaseAfterKernelAdd env kenv
-
 def outDir : System.FilePath := System.mkFilePath [".", "out"]
 
 structure ForEachModuleState where

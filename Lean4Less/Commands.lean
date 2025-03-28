@@ -6,7 +6,29 @@ import Lean4Lean.Commands
 open Lean
 open Lean4Lean
 
+open private Lean.Kernel.Environment.add markQuotInit from Lean.Environment
+
+def add' (env : Environment) (ci : ConstantInfo) : Environment :=
+  let kenv := env.toKernelEnv
+  let kenv := match ci with
+    | .quotInfo _ =>
+      markQuotInit kenv
+    | _ => kenv
+  let kenv := kenv.add ci
+  updateBaseAfterKernelAdd env kenv
+
 namespace Lean4Less
+
+unsafe def withImportModuleAndPatchDefs (mod : Name) (f : Environment → IO α) (elabPatch := true) : IO α := do
+  Lean.withImportModules #[{module := mod}] {} 0 fun env => do
+    let mut env := env
+    if elabPatch then
+      let (lemmEnv, success) ← Lean.Elab.runFrontend (include_str ".." / "patch" / "PatchTheorems.lean") default default `Patch -- TODO how to add PatchTheorems.lean as a lake dependency?
+      if not success then
+        throw $ IO.userError $ "elab of patching defs failed"
+      for (_, c) in lemmEnv.constants do
+        env := add' env c
+    f env
 
 def ppConst (env : Kernel.Environment) (n : Name) : IO Unit := do
   let options := default
