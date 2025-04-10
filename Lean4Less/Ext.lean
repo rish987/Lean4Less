@@ -100,6 +100,7 @@ structure ExtMethods (m : Type → Type u) where
 structure TypeCheckerOpts where
   proofIrrelevance := true
   kLikeReduction := true
+  structLikeReduction := true
 
 inductive CallData where
 |  isDefEqCore : PExpr → PExpr → CallData

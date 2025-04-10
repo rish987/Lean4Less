@@ -67,15 +67,21 @@ def toCtorWhenK (rval : RecursorVal) (e : PExpr) : m (PExpr × Option (EExpr)) :
 
   return (newCtorApp, prf?)
 
-def expandEtaStruct (eType e : PExpr) : (PExpr × Option EExpr) :=
-  eType.toExpr.withApp fun I args => Id.run do
-  let .const I ls := I | return (e, none)
-  let some ctor := getFirstCtor env I | return (e, none)
-  let some (.ctorInfo info) := env.find? ctor | unreachable!
-  let mut result := mkAppRange (.const ctor ls) 0 info.numParams args
-  for i in [:info.numFields] do
-    result := .app result (.proj I i e)
-  pure (result.toPExpr, none)
+def expandEtaStruct (eType e : PExpr) : m (PExpr × Option EExpr) :=
+  eType.toExpr.withApp fun I args => do
+    let .const I ls := I | return (e, none)
+    let some ctor := getFirstCtor env I | return (e, none)
+    let some (.ctorInfo info) := env.find? ctor | unreachable!
+    let mut result := mkAppRange (.const ctor ls) 0 info.numParams args
+    for i in [:info.numFields] do
+      result := .app result (.proj I i e)
+    let p? ←
+      if (← readThe Context).opts.structLikeReduction then
+        let .sort l := (← meth.whnfPure 0 (← meth.inferTypePure 0 eType)).toExpr | unreachable!
+        let p : EExpr := .refl {u := l, A := eType, a := e}
+        pure $ .some p
+      else pure none
+    pure (result.toPExpr, p?)
 
 /--
 When `e` is of struct type, converts it into a constructor application using
@@ -91,7 +97,7 @@ def toCtorWhenStruct (inductName : Name) (e : PExpr) : m (PExpr × Option EExpr)
   let eType ← meth.whnfPure 107 (← meth.inferTypePure 106 e)
   if !eType.toExpr.getAppFn.isConstOf inductName then return (e, none)
   if (← meth.whnfPure 108 (← meth.inferTypePure 109 eType)).toExpr == Expr.prop then return (e, none)
-  return expandEtaStruct env eType e
+  expandEtaStruct env meth eType e
 
 def getRecRuleFor (rval : RecursorVal) (major : Expr) : Option RecursorRule := do
   let .const fn _ := major.getAppFn | none

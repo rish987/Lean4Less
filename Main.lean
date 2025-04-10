@@ -103,7 +103,8 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let pi : Bool := p.hasFlag "proof-irrel"
   let dbgOnly : Bool := p.hasFlag "dbg-only"
   let klr : Bool := p.hasFlag "klike-red"
-  let opts : Lean4Less.TypeCheckerOpts := {proofIrrelevance := pi, kLikeReduction := klr}
+  let slr : Bool := p.hasFlag "slike-red"
+  let opts : Lean4Less.TypeCheckerOpts := {proofIrrelevance := pi, kLikeReduction := klr, structLikeReduction := slr}
   match mod with
     | .anonymous => throw <| IO.userError s!"Could not resolve module: {mod}"
     | m =>
@@ -244,6 +245,7 @@ unsafe def transCmd : Cmd := `[Cli|
     O, "dbg-only"; "(for debugging)"
     pi, "proof-irrel"; "Eliminate proof irrelevance."
     klr, "klike-red"; "Eliminate K-like reduction."
+    slr, "slike-red"; "Eliminate struct-like reduction."
     c, cached : String; "Use cached library translation files from specified directory."
 
   ARGS:

@@ -334,7 +334,6 @@ deriving Inhabited
 
 
 structure ReflData where
-n     : Nat
 u     : Level
 A     : PExpr
 a     : PExpr
@@ -1139,7 +1138,7 @@ def TransData.toExpr (e : TransData EExpr) : EM Expr := match e with
 --     pure $ Lean.mkAppN (.const `HEq.symm [u]) #[A, B, a, b, (← aEqb.toExpr')]
 
 def ReflData.toExpr : ReflData → EM Expr
-| {u, A, a, n} => pure $ Lean.mkAppN (.const `L4L.HEqRefl [u]) #[.lit (.natVal n), A, a]
+| {u, A, a} => pure $ Lean.mkAppN (.const `L4L.HEqRefl [u]) #[A, a]
 
 def PIData.toExpr (e : PIData EExpr) : EM Expr := match e with
 | {P, p, q, extra, ..} => do

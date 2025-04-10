@@ -704,8 +704,8 @@ def isDefEqBinder (binDatas : Array (BinderData × BinderData)) (tBody sBody : P
   termination_by (binDatas.size - 1) - idx
   loop 0 #[] #[] #[] #[]
 
-def mkHRefl (n : Nat) (lvl : Level) (T : PExpr) (t : PExpr) : RecM EExpr := do -- 7
-  pure $ .refl {u := lvl, A := T, a := t, n}
+def mkHRefl (_n : Nat) (lvl : Level) (T : PExpr) (t : PExpr) : RecM EExpr := do -- 7
+  pure $ .refl {u := lvl, A := T, a := t}
 
 def isDefEqPure (n : Nat) (t s : PExpr) (fuel := 1000) : RecM Bool := do
   try
@@ -1252,7 +1252,7 @@ def maybeCast (n : Nat) (p? : Option EExpr) (typLhs typRhs e : PExpr) : RecM PEx
 def isDefEqProofIrrel' (t s tType sType : PExpr) (pt? : Option EExpr) (n : Nat) (useRfl := false) : RecM (Option EExpr) := do
   if ← isDefEqPure (2000 + n) t s 15 then -- limit maximum recursion depth to 15 to avoid incurring worst-case runtime
     if useRfl then
-      let p := .refl {u := 0, A := tType, a := t, n := 50}
+      let p := .refl {u := 0, A := tType, a := t}
       return .some p
     else
     return none
