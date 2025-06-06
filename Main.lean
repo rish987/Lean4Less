@@ -213,7 +213,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
             IO.println s!">>{dn} module [{(← get).count}/{numMods}]"
             let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env.toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
             let imports := if dn == `Init.Prelude then
-                #[{module := `Init.PatchPrelude}] ++ d.imports
+                #[{module := patchPreludeModName}] ++ d.imports
               else
                 d.imports
 

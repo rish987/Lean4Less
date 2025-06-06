@@ -19,16 +19,29 @@ def add' (env : Environment) (ci : ConstantInfo) : Environment :=
 
 namespace Lean4Less
 
+unsafe def withImportModuleInit (init : Environment) (mod : Name) (f : Environment → IO α) : IO α := do
+  Lean.withImportModules #[{module := mod}] {} 0 fun env => do
+    let mut env := env
+    for (_, c) in init.constants do
+      env := add' env c
+    f env
+
 unsafe def withImportModuleAndPatchDefs (mod : Name) (f : Environment → IO α) (elabPatch := true) : IO α := do
   Lean.withImportModules #[{module := mod}] {} 0 fun env => do
     let mut env := env
     if elabPatch then
-      let (lemmEnv, success) ← Lean.Elab.runFrontend (include_str ".." / "patch" / "PatchTheorems.lean") default default `Patch -- TODO how to add PatchTheorems.lean as a lake dependency?
+      let (patchEnv, success) ← Lean.Elab.runFrontend (include_str ".." / "patch" / "PatchTheorems.lean") default default `Patch -- TODO how to add PatchTheorems.lean as a lake dependency?
       if not success then
         throw $ IO.userError $ "elab of patching defs failed"
-      for (_, c) in lemmEnv.constants do
+      for (_, c) in patchEnv.constants do
         env := add' env c
     f env
+
+unsafe def withPatchDefs (f : Environment → IO α) : IO α := do
+  let (patchEnv, success) ← Lean.Elab.runFrontend (include_str ".." / "patch" / "PatchTheorems.lean") default default `Patch -- TODO how to add PatchTheorems.lean as a lake dependency?
+  if not success then
+    throw $ IO.userError $ "elab of patching defs failed"
+  f patchEnv
 
 def ppConst (env : Kernel.Environment) (n : Name) : IO Unit := do
   let options := default
