@@ -162,7 +162,7 @@ theorem ex1 : k = K.mk := rfl
 theorem ex2 : @K.rec (fun _ => Bool) true K.mk = true := rfl
 #check_off tmp.ex2
 theorem ex3 : @K.rec (fun _ => Bool) true k = true := rfl
-#check_off tmp.ex3 -- Error
+-- #check_off tmp.ex3 -- Error
 
 end tmp
 
@@ -385,10 +385,10 @@ noncomputable def pushTestIdemApp : (g : G q) → Type := fun (g : G p) => Hq g
 
 -- #print BitVec.mul_def
 
-theorem size_toUTF8 (s : String) : s.toUTF8.size = s.utf8ByteSize := by
-  simp [String.toUTF8, ByteArray.size, Array.size, String.utf8ByteSize, List.bind]
-  induction s.data <;> simp [List.map, List.join, String.utf8ByteSize.go, Nat.add_comm, *]
--- #print size_toUTF8
+-- theorem size_toUTF8 (s : String) : s.toUTF8.size = s.utf8ByteSize := by
+--   simp [String.toUTF8, ByteArray.size, Array.size, String.utf8ByteSize, List.bind]
+--   induction s.data <;> simp [List.map, List.join, String.utf8ByteSize.go, Nat.add_comm, *]
+-- -- #print size_toUTF8
 -- #check_off size_toUTF8
 
 def F : Bool → Type

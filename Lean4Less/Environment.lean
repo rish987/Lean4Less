@@ -3,6 +3,7 @@ import Lean4Less.Quot
 import Lean4Less.Inductive.Add
 import Lean4Less.Primitive
 import Lean4Lean.Environment.Basic
+import Lean4Lean.KernelEnv
 
 namespace Lean4Less
 namespace Kernel.Environment
@@ -167,10 +168,12 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
       pure {v' with value}
     newvs' := newvs'.push newv'
   return newvs'.map .defnInfo |>.toList
+#print Array.eraseIdx
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
     Except KernelException Kernel.Environment := do
+  let env := env.toStage₁
   match decl with
   | .axiomDecl v =>
     let v ← patchAxiom env v opts
@@ -179,6 +182,8 @@ def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeChec
     let v ← patchDefinition env v allowAxiomReplace opts
     return env.add v
   | .thmDecl v =>
+    -- if v.name == ``Array.eraseIdx._unary.induct then
+    --   dbg_trace s!"DBG[62]: Environment.lean:185 (after sorry)"
     let v ← patchTheorem env v allowAxiomReplace opts
     return env.add v
   | .opaqueDecl v =>

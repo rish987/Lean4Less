@@ -182,7 +182,7 @@ def mkId (n : Nat) (dom : Expr) : RecM Name := do
 
 def _root_.Lean.LocalContext.mkLocalDecl' (lctx : LocalContext) (fvarId : FVarId) (userName : Name) (type : Expr) (bi : BinderInfo := BinderInfo.default) (kind : LocalDeclKind := .default) : LocalContext :=
   match lctx with
-  | { fvarIdToDecl := map, decls := decls } =>
+  | { fvarIdToDecl := map, decls := decls, .. } =>
     let idx  := 0
     let decl := LocalDecl.cdecl idx fvarId userName type bi kind
     { fvarIdToDecl := map.insert fvarId decl, decls := decls.push decl }
@@ -519,11 +519,11 @@ def addLVarToCtx (decl : LocalDeclE) (lastVar? : Option FVarId) (idx? : Option N
             return i
         i := i - 1
       throw $ .other "could not find variable dependency in context"
-    let newDecls := s.lctx.decls.toArray.insertAt! (idx + 1) decl' -- FIXME too inefficient to go back and forth between Array and PersistentArray?
+    let newDecls := s.lctx.decls.toArray.insertIdx! (idx + 1) decl' -- FIXME too inefficient to go back and forth between Array and PersistentArray?
     modify fun st => { st with fvarsToLets := fvarsToLets, lctx := {st.lctx with decls := newDecls.toPArray', fvarIdToDecl := st.lctx.fvarIdToDecl.insert decl.fvarId decl'}}
   else
     let s ← get
-    let newDecls := s.lctx.decls.toArray.insertAt! 0 decl'
+    let newDecls := s.lctx.decls.toArray.insertIdx! 0 decl'
     modify fun st => { st with initLets := st.initLets.push decl, lctx := {st.lctx with decls := newDecls.toPArray', fvarIdToDecl := st.lctx.fvarIdToDecl.insert decl.fvarId decl'}}
 
 def mkLetE (t s : PExpr) (p : EExpr) (n := 0) : RecM (EExpr × LocalDeclE × Option (FVarId × Nat)) := do
