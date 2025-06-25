@@ -167,19 +167,23 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
       pure {v' with value}
     newvs' := newvs'.push newv'
   return newvs'.map .defnInfo |>.toList
+#print Array.eraseIdx
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
     Except KernelException Kernel.Environment := do
+  -- let env := env.toStage₁
   match decl with
   | .axiomDecl v =>
     let v ← patchAxiom env v opts
     return env.add v
   | .defnDecl v =>
-    let v ← patchDefinition env v allowAxiomReplace opts
+    let v ← patchDefinition env v false opts
     return env.add v
   | .thmDecl v =>
-    let v ← patchTheorem env v allowAxiomReplace opts
+    -- if v.name == ``Array.eraseIdx._unary.induct then
+    --   dbg_trace s!"DBG[62]: Environment.lean:185 (after sorry)"
+    let v ← patchTheorem env v false opts
     return env.add v
   | .opaqueDecl v =>
     let v ← patchOpaque env v opts

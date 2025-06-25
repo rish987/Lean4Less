@@ -15,7 +15,7 @@ def fuelWrap (idx : Nat) (fuel : Nat) (d : CallData) : M (CallDataT d) := do
 let ctx := (← readThe Context)
 match fuel with
   | 0 =>
-    dbg_trace s!"deep recursion callstack: {ctx.callStack.map (·.1)}"
+    -- dbg_trace s!"deep recursion callstack: {ctx.callStack.map (·.1)}"
     throw .deepRecursion
   | fuel' + 1 =>
     -- let recDepth := (defFuel - fuel)

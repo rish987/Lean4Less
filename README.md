@@ -99,6 +99,7 @@ The command line arguments are:
 
 If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of its imported modules, is output in the directory `out/` as `.olean` files. The output file structure mirrors that of the input, with the addition of an `Init.PatchPrelude` module (imported by `Init.Prelude`) isolating the [translation-specific definitions](patch/PatchTheorems.lean) and their dependencies.
 
+NOTE: with recent changes to Lean's `.olean` module system, the `.olean` output functionality is currently broken.
 
 You can run the executable using `lake exe`. For instance, to translate the standard library to Lean-, run:
 ```

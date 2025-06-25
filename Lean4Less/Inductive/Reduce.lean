@@ -117,7 +117,8 @@ def inductiveReduceRec [Monad m] [MonadLCtx m] [MonadExcept KernelException m] [
     : m (Option (PExpr × Option EExpr)) := do
   let recFn := e.toExpr.getAppFn
   let .const recFnName ls := recFn | return none
-  let some (.recInfo info) := env.find? recFnName | return none
+  let some (.recInfo info) := env.find? recFnName |
+    return none
   let recType := info.type.instantiateLevelParams info.levelParams ls
   let recArgs := e.toExpr.getAppArgs
   let majorIdx := info.getMajorIdx
