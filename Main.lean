@@ -55,40 +55,22 @@ partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Na
   for i in imports do
     if /- i.runtimeOnly ||  -/(← get).moduleNameSet.contains i.module then
       continue
-    dbg_trace s!"DBG[80]: Main.lean:55 {i}"
-    dbg_trace s!"DBG[84]: Main.lean:58 (after continue)"
     let mFiles ← findOLeanParts i.module
-    dbg_trace s!"DBG[85]: Main.lean:60 (after let mFiles ← findOLeanParts i.module)"
-    let mut idx := 0
-    for (mFile, ext) in mFiles do
-      dbg_trace s!"DBG[90]: Main.lean:64 {mFile}"
-      let parts ← readModuleDataParts (mFiles.map (·.1))
-      dbg_trace s!"DBG[89]: Main.lean:65 (after let parts ← readModuleDataParts #[mFil…)"
-    for (mFile, ext) in mFiles do
-      dbg_trace s!"DBG[86]: Main.lean:63 {mFile}"
-      let parts ← readModuleDataParts #[mFile]
-      dbg_trace s!"DBG[88]: Main.lean:65 {parts.size}"
-      let (mod, _) ← readModuleData mFile
-      dbg_trace s!"DBG[87]: Main.lean:65 (after let (mod, _) ← readModuleData mFile)"
-      let modLeafs ←
-        if idx = 0 then
-          getLeafModules mod.imports
-        else
-          pure #[]
-      if modLeafs.size == 0 then
-        modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
+    let parts ← readModuleDataParts (mFiles.map (·.1))
+    let some part0 := parts[0]? | unreachable!
+    let modLeafs ← getLeafModules part0.1.imports 
+    leafs := leafs ++ modLeafs
+    if modLeafs.size == 0 then
+      modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
+      for ((_f, ext), (mod, _)) in mFiles.zip parts do
+        dbg_trace s!"DBG[102]: Main.lean:65: _f={_f}"
         leafs := leafs.push (i.module, mod, ext)
-      leafs := leafs ++ modLeafs
-      idx := idx + 1
-    dbg_trace s!"DBG[81]: Main.lean:55 {i}"
   pure leafs
 
 partial def forEachModule' (f : Name → ModuleData → String → NameSet → ForEachModuleM NameSet) (imports : Array Import) (aborted : NameSet) : ForEachModuleM NameSet := do
   let mut aborted := aborted
   while true do
-    dbg_trace s!"DBG[82]: Main.lean:78 (after while true do)"
     let leafs ← getLeafModules imports
-    dbg_trace s!"DBG[83]: Main.lean:80 (after let leafs ← getLeafModules imports)"
     if leafs.size == 0 then break
     for (n, m, ext) in leafs do
       modify fun s => { s with count := s.count + 1 }
@@ -234,9 +216,14 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
                 pure false
             unless not skip do return aborted
 
-            dbg_trace s!"DBG[63]: Main.lean:218 {dn}, {d.extraConstNames.contains `Array.eraseIdx._unary.induct}, {d.constants.any (·.name == `Array.eraseIdx._unary.induct)}, {d.constNames.contains `Array.eraseIdx._unary.induct}, {d.constNames.contains `Array.eraseIdx.induct}"
             let (newConstants, overrides) ← d.constNames.zip d.constants |>.foldlM (init := (default, Lean4Less.getOverrides env.toKernelEnv)) fun (accNewConstants, accOverrides) (n, ci) => do
-              if not ((← get).env.constants.contains n) then
+              let mut skip := false
+              if let some ci := ((← get).env.constants.find? n) then
+                if let .axiomInfo .. := ci then -- FIXME this is pretty fragile
+                  pure ()
+                else
+                  skip := true
+              if skip then
                 if let some n' := constOverrides[n]? then
                   if let some ci' := lemmEnv.find? n' then
                     let accOverrides := accOverrides.insert n ci'
@@ -252,7 +239,19 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
                 else pure (accNewConstants.insert n ci, accOverrides)
               else
                 pure $ (accNewConstants, accOverrides)
-            IO.println s!">>{dn} module [{(← get).count}/{numMods}]"
+            if dn == `Init.Data.Nat.Basic then
+              if let some ci := d.constants.find? (fun ci => ci.name == `Nat.repeatTR.loop) then
+                let name := match ci with
+                  | .axiomInfo    .. => "axiom"
+                  | .defnInfo     .. => "def"
+                  | .thmInfo      .. => "thm"
+                  | .opaqueInfo   .. => "opaque"
+                  | .quotInfo     .. => "quot"
+                  | .inductInfo   .. => "induct"
+                  | .ctorInfo     .. => "ctor"
+                  | .recInfo      .. => "rec"
+                dbg_trace s!"DBG[B]: TypeChecker.lean:1643 {name}"
+            IO.println s!">>{dn} module ({ext}) [{(← get).count}/{numMods}], {(← get).env.toKernelEnv.find? `Nat |>.isSome}, {(← get).env.toKernelEnv.find? `Nat.repeatTR.loop |>.isSome}"
             let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} (← get).env.toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
             let imports := if dn == `Init.Prelude then
                 #[{module := patchPreludeModName}] ++ d.imports
@@ -274,6 +273,9 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         -- replayFromInit' Lean4Less.addDecl m lemmEnv (op := "patch") (initConsts? := Lean4Less.patchConsts) fun env' =>
         --   replayFromEnv Lean4Lean.addDecl m env'.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := false, kLikeReduction := false})
   return 0
+#print Nat.brecOn
+#print Nat.repeatTR.loop
+#check_off Nat.repeatTR.loop.eq_1
 
 unsafe def transCmd : Cmd := `[Cli|
   transCmd VIA runTransCmd; ["0.0.1"]

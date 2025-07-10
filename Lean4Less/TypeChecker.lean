@@ -1638,12 +1638,29 @@ def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
 Checks if `e` has a head constant that can be delta-reduced (that is, it is a
 theorem or definition), returning its `ConstantInfo` if so.
 -/
-def isDelta (env : Kernel.Environment) (e : PExpr) : Option ConstantInfo := do
+def isDelta (env : Kernel.Environment) (e : PExpr) (dbg := false) : Option ConstantInfo := do
   if let .const c _ := e.toExpr.getAppFn then
     -- if c != `L4L.eq_of_heq then -- TODO have to block all of the patch theorems?
     if let some ci := env.find? c then
       if ci.hasValue then
         return ci
+      -- else
+        -- if dbg then
+        -- let name := match ci with
+        --   | .axiomInfo    .. => "axiom"
+        --   | .defnInfo     .. => "def"
+        --   | .thmInfo      .. => "thm"
+        --   | .opaqueInfo   .. => "opaque"
+        --   | .quotInfo     .. => "quot"
+        --   | .inductInfo   .. => "induct"
+        --   | .ctorInfo     .. => "ctor"
+        --   | .recInfo      .. => "rec"
+        -- dbg_trace s!"DBG[B]: TypeChecker.lean:1643 {name}"
+  --   else
+  --     if dbg then
+  --       dbg_trace s!"DBG[C]: TypeChecker.lean:1643 {e}"
+  -- if dbg then
+  --   dbg_trace s!"DBG[100]: TypeChecker.lean:1649 {e}"
   none
 
 /--
@@ -2116,7 +2133,7 @@ If δ-reduction+weak-head-normalization cannot be continued (i.e. we have a
 weak-head normal form (with cheapProj := true)), defers further defeq-checking
 to `isDefEq`.
 -/
-def lazyDeltaReductionStep (ltn lsn : PExpr) : RecM ReductionStatus := do
+def lazyDeltaReductionStep (ltn lsn : PExpr) (dbg := false) : RecM ReductionStatus := do
   -- if (← callId) > 384  && ! (← shouldTrace) then
   --   if ltn.toExpr.containsFVar' (.mk "_kernel_fresh.37".toName) || lsn.toExpr.containsFVar' (.mk "_kernel_fresh.37".toName) then 
   --     throw $ .other "HERE A"
@@ -2166,7 +2183,7 @@ def lazyDeltaReductionStep (ltn lsn : PExpr) : RecM ReductionStatus := do
     --   if not (← isDefEqPure 0 lsn nlsn) then
     --     throw $ .other s!"lazyDeltaReduction failed sanity check 6 {(← get).numCalls}"
     cont nltn nlsn pltnEqnltn? plsnEqnlsn?
-  match isDelta env ltn, isDelta env lsn with
+  match isDelta env ltn dbg, isDelta env lsn dbg with
   | none, none =>
     return .notDelta
   | some _, none =>
@@ -2236,10 +2253,9 @@ Returns whether the `cheapProj := true` weak-head normal forms of `tn` and
 - one of them can be converted to a natural number/boolean literal.
 Otherwise, defers to the calling function with these normal forms.
 -/
-def lazyDeltaReduction (tn sn : PExpr) : RecM ReductionStatus := loop tn sn none none 1000 where
+def lazyDeltaReduction (tn sn : PExpr) (dbg := false) : RecM ReductionStatus := loop tn sn none none 1000 where
   loop ltn lsn (tnEqltn? snEqlsn? : Option EExpr)
   | 0 =>
-    dbg_trace s!"DBG[66]: TypeChecker.lean:2241 (after | 0 =>)"
     throw .deterministicTimeout
   | fuel+1 => do
     let (r, proof?) ← isDefEqOffset ltn lsn
@@ -2269,7 +2285,7 @@ def lazyDeltaReduction (tn sn : PExpr) : RecM ReductionStatus := loop tn sn none
       let tnEqsn? ← appHEqTrans? ltn lsn' lsn ptnEqsn'? (← appHEqSymm? lsnEqlsn'?)
       return .bool ret tnEqsn?
 
-    match ← lazyDeltaReductionStep ltn lsn with
+    match ← lazyDeltaReductionStep ltn lsn dbg with
     | .continue nltn nlsn ltnEqnltn? lsnEqnlsn? =>
 
       let tnEqnltn? ← appHEqTrans? tn ltn nltn tnEqltn? ltnEqnltn?
@@ -2341,6 +2357,8 @@ def isDefEqCore' (t s : PExpr) : RecM (Bool × (Option EExpr)) := do
   let (tn, tEqtn?) ← whnfCore 76 t (cheapK := true) (cheapProj := true)
   let (sn, sEqsn?) ← whnfCore 77 s (cheapK := true) (cheapProj := true)
 
+  -- let dbg := if let .const ``Nat.repeatTR.loop .. := t.toExpr.getAppFn then true else false
+  let dbg := false
   let mktEqs? (t' s' : PExpr) (tEqt'? sEqs'? t'Eqs'? : Option EExpr) := do 
     let tEqs'? ← appHEqTrans? t t' s' tEqt'? t'Eqs'?
     let s'Eqs? ← appHEqSymm? sEqs'?
@@ -2367,7 +2385,7 @@ def isDefEqCore' (t s : PExpr) : RecM (Bool × (Option EExpr)) := do
       return (true, ← mktEqs? tn sn tEqtn? sEqsn? tnEqsn?)
     return (false, none)
 
-  match ← lazyDeltaReduction tn sn with
+  match ← lazyDeltaReduction tn sn dbg with
   | .continue ..
   | .notDelta => throw $ .other "unreachable 12"
   | .bool b tnEqsn? =>
