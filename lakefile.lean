@@ -3,9 +3,9 @@ open Lake DSL
 
 package lean4less
 
-require batteries from git "https://github.com/leanprover-community/batteries" @ "v4.21.0-rc3"
+require batteries from git "https://github.com/leanprover-community/batteries" @ "v4.22.0-rc4"
 
-require lean4lean from "/home/rish/lean4lean/"
+require lean4lean from "/root/lean4lean/"
 
 -- require lean4lean from git "https://github.com/rish987/lean4lean" @ "lean4less"
 

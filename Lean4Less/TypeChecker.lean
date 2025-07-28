@@ -1116,7 +1116,7 @@ def smartCast' (n : Nat) (tl tr e : PExpr) (p? : Option EExpr := none) : RecM ((
     | remLams' + 1, .lam nm _ b bi, .forallE _ _ tbl .., .forallE _ tdr tbr .., .forallE forallData =>
       let {A, a, extra, u, alets, ..} := forallData
       withNewFVar 5 nm tdr.toPExpr bi fun var => do
-        let (UaEqVx? : Option EExpr) := 
+        let UaEqVx? : Option EExpr := 
           match extra with
           | .ABUV {UaEqVx, ..}
           | .UV {UaEqVx, ..} => Option.some UaEqVx.1
