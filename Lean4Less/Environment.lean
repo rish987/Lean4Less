@@ -175,18 +175,12 @@ def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeChec
   -- let env := env.toStage₁
   match decl with
   | .axiomDecl v =>
-    if v.name == `Nat.repeatTR.loop then
-      dbg_trace s!"DBG[103]: Environment.lean:179 (after if v.name == Nat.repeatTR.loop then)"
     let v ← patchAxiom env v opts
     return env.add v
   | .defnDecl v =>
-    if v.name == ``Nat.repeatTR.loop then
-      dbg_trace s!"DBG[105]: Environment.lean:185 (after dbg_trace s!DBG[103]: Environment.lean:1…)"
     let v ← patchDefinition env v false opts
     return env.add v
   | .thmDecl v =>
-    if v.name == `Nat.repeatTR.loop then
-      dbg_trace s!"DBG[104]: Environment.lean:190 (after dbg_trace s!DBG[103]: Environment.lean:1…)"
     -- if v.name == ``Array.eraseIdx._unary.induct then
     --   dbg_trace s!"DBG[62]: Environment.lean:185 (after sorry)"
     let v ← patchTheorem env v false opts

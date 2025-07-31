@@ -153,7 +153,7 @@ def getOverrides (env : Kernel.Environment) : Std.HashMap Name ConstantInfo :=
       if let some ci := env.find? n' then
         acc.insert n ci
       else
-        panic! "could not find override `{n'}` for '{n}'"
+        panic! s!"could not find override `{n'}` for '{n}'"
     else
       acc
 
