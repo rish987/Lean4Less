@@ -53,19 +53,20 @@ def findOLeanParts (mod : Name) : IO (Array (System.FilePath × String)) := do
       fnames := fnames.push (pFile, "olean.private")
   return fnames
 
-partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array Name := do
-  let mut leafs : Array Name := #[]
+partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × Array Import) := do
+  let mut leafs : Array (Name × Array Import) := #[]
   for i in imports do
     if /- i.runtimeOnly ||  -/(← get).moduleNameSet.contains i.module then
       continue
     let mFiles ← findOLeanParts i.module
     let parts ← readModuleDataParts (mFiles.map (·.1))
     let some part0 := parts[0]? | unreachable!
-    let modLeafs ← getLeafModules part0.1.imports 
+    let imports := part0.1.imports 
+    let modLeafs ← getLeafModules imports
     leafs := leafs ++ modLeafs
     if modLeafs.size == 0 then
       modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
-      leafs := leafs.push i.module
+      leafs := leafs.push (i.module, imports)
   pure leafs
 
 def getModConsts (env : Environment) (m : Name) := 
@@ -93,7 +94,7 @@ unsafe def withModConstMap (mod : Name) (f : Std.HashMap Name ConstantInfo → F
         map := map.insert n ci
     f map
 
-unsafe def forEachModule' (rootMod : Name) (initEnv : Environment) (f : Name → Std.HashMap Name ConstantInfo → Environment → NameSet → ForEachModuleM (Environment × NameSet)) (aborted : NameSet) (cont : NameSet → ForEachModuleState → IO α) : IO α := do
+unsafe def forEachModule' (rootMod : Name) (initEnv : Environment) (f : Name → Array Import → Std.HashMap Name ConstantInfo → Environment → NameSet → ForEachModuleM (Environment × NameSet)) (aborted : NameSet) (cont : NameSet → ForEachModuleState → IO α) : IO α := do
   Lean.withImportModules #[{module := rootMod}] {} fun origEnv => do
     let (aborted, state) ← ForEachModuleM.run origEnv initEnv do
       let mut aborted := aborted
@@ -103,8 +104,8 @@ unsafe def forEachModule' (rootMod : Name) (initEnv : Environment) (f : Name →
           break
         let rec r leafs env aborted : ForEachModuleM (Environment × NameSet) := 
           match leafs with
-          | m :: leafs => do withModConstMap m fun constMap => do
-            let (env, aborted) ← f m constMap env aborted
+          | (m, imports) :: leafs => do withModConstMap m fun constMap => do
+            let (env, aborted) ← f m imports constMap env aborted
             r leafs env aborted
           | [] => pure (env, aborted)
 
@@ -114,7 +115,8 @@ unsafe def forEachModule' (rootMod : Name) (initEnv : Environment) (f : Name →
       pure aborted
     cont aborted state
 
-unsafe def forEachModule (rootMod : Name) (initEnv : Environment) (f : Name → Std.HashMap Name ConstantInfo → Environment → NameSet → ForEachModuleM (Environment × NameSet)) (aborted : NameSet) : IO NameSet := do
+unsafe def forEachModule (rootMod : Name) (initEnv : Environment)
+  (f : Name → Array Import → Std.HashMap Name ConstantInfo → Environment → NameSet → ForEachModuleM (Environment × NameSet)) (aborted : NameSet) : IO NameSet := do
   forEachModule' rootMod initEnv f aborted fun aborted _ => pure aborted
 
 def mkModuleData (imports : Array Import) (env : Environment) (newEntries : Array (Name × Array EnvExtensionEntry) := #[]) : IO ModuleData := do
@@ -224,14 +226,23 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         --       abortedTxt := abortedTxt ++ "\n"
         --   IO.FS.writeFile abortedFile abortedTxt
         --   saveModuleData modPath n mod
+        let mkMod imports env m := do
+          let mut newEnv := env
+          let newHeader := {newEnv.header with imports}
+          newEnv := updateEnvHeader newEnv newHeader
+          let modPath := (modToFilePath outDir m "olean")
+          let some modParent := modPath.parent | throw $ IO.userError s!"could not find parent dir of module {m}"
+          IO.FS.createDirAll modParent
+          let data ← mkModuleData env
+          saveModuleData modPath env.mainModule data
 
         IO.println s!">>init module"
         let patchConsts ← getDepConstsEnv lemmEnv Lean4Less.patchConsts overrides
         let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := patchConsts, opts := {}, overrides} (← mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
         let env := updateBaseAfterKernelAdd lemmEnv kenv
-        -- mkMod #[] env patchPreludeModName "olean" aborted
+        mkMod #[] env patchPreludeModName
 
-        let (aborted ,count) ← forEachModule' m (← mkEmptyEnvironment) (aborted := aborted) (fun n constMap env aborted => do
+        let (aborted ,count) ← forEachModule' m (← mkEmptyEnvironment) (aborted := aborted) (fun n imports constMap env aborted => do
             if abortedMods.contains n then
               let aborted' := constMap.toList.foldl (init := aborted) fun acc (cn, _) => acc.insert cn
               pure (env, aborted')
@@ -240,7 +251,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
           fun aborted s => pure (aborted, s.count)
         let numMods := count
 
-        forEachModule' m (aborted := aborted) env (fun m constMap env aborted => do
+        forEachModule' m (aborted := aborted) env (fun m imports constMap env aborted => do
           let currEnv := env
           let mut newEnv := currEnv
           let skip ←
@@ -294,11 +305,12 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
           let (kenv, aborted) ← replay (Lean4Less.addDecl (opts := opts)) {newConstants := newConstants, opts := {}, overrides} newEnv.toKernelEnv (printProgress := true) (op := "patch") (aborted := aborted)
           newEnv := updateBaseAfterKernelAdd newEnv kenv
 
-          -- let imports := if m == `Init.Prelude then
-          --     #[{module := patchPreludeModName}] ++ d.imports
-          --   else
-          --     d.imports
-          -- mkMod imports env dn ext aborted (newEntries := d.entries)
+          let imports := if m == `Init.Prelude then
+              #[{module := patchPreludeModName}] ++ imports
+            else
+              imports
+          mkMod imports newEnv m
+
           pure (newEnv, aborted))
           fun aborted s => do
             let env := s.env
