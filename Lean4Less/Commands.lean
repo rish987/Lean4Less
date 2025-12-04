@@ -174,9 +174,11 @@ def transL4L (n : Array Name) (env? : Option Kernel.Environment := none) : Lean.
 
 def checkL4L (ns : Array Name) (env : Kernel.Environment) (printOutput := true) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) (deps := false) : IO Environment := do
   let env ← transL4L' ns env (pp := printOutput) (printProgress := printProgress) (interactive := interactive) (opts := opts) (dbgOnly := dbgOnly)
+  let env := updateBaseAfterKernelAdd env env.toKernelEnv.toMap₁
   let ns := ns
   let nSet := ns.foldl (init := default) fun acc n => acc.insert n
   -- unsafe replayFromEnv Lean4Lean.addDecl env.mainModule env.toMap₁ (op := "typecheck") (opts := {proofIrrelevance := false, kLikeReduction := false})
+
 
   let (_, checkEnv) ← checkConstants (printErr := true) env nSet Lean4Lean.addDecl (printProgress := printProgress) (opts := {proofIrrelevance := not opts.proofIrrelevance, kLikeReduction := not opts.kLikeReduction}) (interactive := interactive) (dbgOnly := false) (overrides := default) (deps := deps) (write := false)
 
