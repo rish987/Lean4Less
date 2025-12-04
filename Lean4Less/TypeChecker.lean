@@ -29,9 +29,9 @@ structure TypeChecker.State where
   whnfCoreCache : Std.HashMap PExpr (PExpr × Option (EExpr × LocalDeclE × Option FVarId)) := {}
   -- whnfCache : Std.HashMap (PExpr × Bool) (PExpr × Option (EExpr × LocalDeclE × Option FVarId)) := {}
   whnfCache : Std.HashMap (PExpr × Bool) (PExpr × Option (EExpr × LocalDeclE × Option FVarId)) := {}
-  isDefEqCache : Std.HashMap (PExpr × PExpr) (EExpr × LocalDeclE × Option FVarId) := Std.HashMap.empty
+  isDefEqCache : Std.HashMap (PExpr × PExpr) (EExpr × LocalDeclE × Option FVarId) := Std.HashMap.emptyWithCapacity
   isDefEqAppCache : Std.HashMap (Array PExpr × Array PExpr) (Option (EExpr × LocalDeclE × Option FVarId × Array (Option (PExpr × PExpr × EExpr)))) := {}
-  exprCache : Std.HashMap PExpr (LocalDeclE × Option FVarId) := Std.HashMap.empty
+  exprCache : Std.HashMap PExpr (LocalDeclE × Option FVarId) := Std.HashMap.emptyWithCapacity
   fvarRegistry : Std.HashMap Name Nat := {} -- for debugging purposes
   initLets : Array LocalDeclE := {}
   fvarsToLets : Std.HashMap FVarId (Array LocalDeclE) := {}
@@ -79,14 +79,14 @@ def CallDataT : CallData → Type
 
 namespace TypeChecker
 
-abbrev M := ReaderT Context <| StateT State <| Except KernelException
+abbrev M := ReaderT Context <| StateT State <| Except Kernel.Exception
 abbrev MPE := M (PExpr × Option PExpr)
 abbrev MEE := M (PExpr × Option EExpr)
 abbrev MB := M (Bool × Option EExpr)
 abbrev MLB := M (LBool × Option EExpr)
 
 def M.run (env : Kernel.Environment) (const : Name) (safety : DefinitionSafety := .safe) (lctx : LocalContext := {}) (opts : TypeCheckerOpts := {})
-    (x : M α) : Except KernelException α :=
+    (x : M α) : Except Kernel.Exception α :=
   x { env, safety, const, opts } |>.run' {lctx}
 
 def getKEnv : M Kernel.Environment := do return (← read).env
@@ -371,11 +371,11 @@ def ensureForallCorePure (e : PExpr) (s : Expr) : RecM PExpr := do
 /--
 Checks that `l` does not contain any level parameters not found in the context `tc`.
 -/
-def checkLevel (tc : Context) (l : Level) : Except KernelException Unit := do
+def checkLevel (tc : Context) (l : Level) : Except Kernel.Exception Unit := do
   if let some n2 := l.getUndefParam tc.lparams then
     throw <| .other s!"invalid reference to undefined universe level parameter '{n2}' {tc.lparams}"
 
-def inferFVar (tc : State) (name : FVarId) (idx : Option Nat) : Except KernelException PExpr := do
+def inferFVar (tc : State) (name : FVarId) (idx : Option Nat) : Except Kernel.Exception PExpr := do
   if let some decl := tc.lctx.find? name then
     return decl.type.toPExpr
   throw <| .other s!"unknown free variable (index {idx}, name {name.name})"
@@ -384,7 +384,7 @@ def inferFVar (tc : State) (name : FVarId) (idx : Option Nat) : Except KernelExc
 Infers the type of `.const e ls`.
 -/
 def inferConstant (tc : Context) (name : Name) (ls : List Level) :
-    Except KernelException PExpr := do
+    Except Kernel.Exception PExpr := do
   let e := Expr.const name ls
   -- should be okay as the environment should only contain patched constants
   let info ← tc.env.get name
@@ -656,7 +656,7 @@ def isDefEqBinder (binDatas : Array (BinderData × BinderData)) (tBody sBody : P
 : RecM (Bool × (Option T)) := do
   let rec loop idx (tvars svars tvars' : Array LocalDecl) ds : RecM (Bool × (Option T)) := do
     let ({name := tName, dom := tDom, info := tBi},
-      {name := sName, dom := sDom,  info := sBi}) := binDatas.get! idx
+      {name := sName, dom := sDom,  info := sBi}) := binDatas[idx]!
     let tDom := tDom.instantiateRev (tvars.map (·.toExpr.toPExpr))
     let sDom := sDom.instantiateRev (svars.map (·.toExpr.toPExpr))
     let p? ← if tDom != sDom then
@@ -1690,7 +1690,7 @@ def unfoldDefinition (env : Kernel.Environment) (e : PExpr) : Option PExpr := do
   else
     unfoldDefinitionCore env e
 
-def reduceNative (_env : Kernel.Environment) (e : PExpr) : Except KernelException (Option (PExpr × Option EExpr)) := do
+def reduceNative (_env : Kernel.Environment) (e : PExpr) : Except Kernel.Exception (Option (PExpr × Option EExpr)) := do
   let .app f (.const c _) := e.toExpr | return none
   if f == .const ``reduceBool [] then
     throw <| .other s!"lean4lean does not support 'reduceBool {c}' reduction"

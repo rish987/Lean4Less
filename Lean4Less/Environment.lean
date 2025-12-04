@@ -25,7 +25,7 @@ def checkConstantVal (env : Kernel.Environment) (v : ConstantVal) (allowPrimitiv
   pure ret
 
 def patchAxiom (env : Kernel.Environment) (v : AxiomVal) (opts : TypeCheckerOpts) :
-    Except KernelException ConstantInfo := do
+    Except Kernel.Exception ConstantInfo := do
   let type ← (checkConstantVal env v.toConstantVal).run env v.name (opts := opts)
     (safety := if v.isUnsafe then .unsafe else .safe)
   if type.toExpr.hasFVar then
@@ -34,7 +34,7 @@ def patchAxiom (env : Kernel.Environment) (v : AxiomVal) (opts : TypeCheckerOpts
   return .axiomInfo v
 
 def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
-    Except KernelException ConstantInfo := do
+    Except Kernel.Exception ConstantInfo := do
   if let .unsafe := v.safety then
     -- Meta definition can be recursive.
     -- So, we check the header, add, and then type check the body.
@@ -88,7 +88,7 @@ def patchDefinition (env : Kernel.Environment) (v : DefinitionVal) (allowAxiomRe
       return (.defnInfo v)
 
 def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace := false) (opts : TypeCheckerOpts) :
-    Except KernelException ConstantInfo := do
+    Except Kernel.Exception ConstantInfo := do
   -- TODO(Leo): we must add support for handling tasks here
   let type ← M.run env v.name (safety := .safe) (lctx := {}) (opts := opts) do
     checkConstantVal env v.toConstantVal
@@ -118,7 +118,7 @@ def patchTheorem (env : Kernel.Environment) (v : TheoremVal) (allowAxiomReplace 
     return .axiomInfo v
 
 def patchOpaque (env : Kernel.Environment) (v : OpaqueVal) (opts : TypeCheckerOpts) :
-    Except KernelException ConstantInfo := do
+    Except Kernel.Exception ConstantInfo := do
   let type ← M.run env v.name (safety := .safe) (lctx := {}) opts do
     checkConstantVal env v.toConstantVal
   let value ← M.run env v.name (safety := .safe) (lctx := {}) opts do
@@ -134,7 +134,7 @@ def patchOpaque (env : Kernel.Environment) (v : OpaqueVal) (opts : TypeCheckerOp
   return .opaqueInfo v
 
 def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : TypeCheckerOpts) :
-    Except KernelException (List ConstantInfo) := do
+    Except Kernel.Exception (List ConstantInfo) := do
   let v₀ :: _ := vs | throw <| .other "invalid empty mutual definition"
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
@@ -171,7 +171,7 @@ def patchMutual (env : Kernel.Environment) (vs : List DefinitionVal) (opts : Typ
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl' (env : Kernel.Environment) (decl : @& Declaration) (opts : TypeCheckerOpts := {}) (allowAxiomReplace := false) :
-    Except KernelException Kernel.Environment := do
+    Except Kernel.Exception Kernel.Environment := do
   -- let env := env.toStage₁
   match decl with
   | .axiomDecl v =>

@@ -3,6 +3,15 @@ import Lean4Lean.Expr
 import Lean4Less.EExpr
 import Lean4Less.Ext
 
+import Init.Data.List.Nat.Basic
+import Init.Data.Array.Mem
+import Init.Data.Array.DecidableEq
+import Init.Data.Range.Lemmas
+import Init.Data.List.ToArray
+import Init.Data.List.Control
+import Init.Data.Array.Basic
+import Init.Data.Array.Bootstrap
+
 -- 241
 -- mkId 218
 
@@ -16,7 +25,7 @@ structure ExtMethodsA (m : Type → Type u) extends ExtMethods m where
   -- alignForAll (numBinds : Nat) (ltl ltr : Expr) : m (Expr × Expr)
   opt : Bool := true
 
-variable [Monad m] [MonadLCtx m] [MonadExcept KernelException m] [MonadNameGenerator m] [MonadWithReaderOf LocalContext m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Environment) -- TODO more central place to declare these?
+variable [Monad m] [MonadLCtx m] [MonadExcept Kernel.Exception m] [MonadNameGenerator m] [MonadWithReaderOf LocalContext m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Environment) -- TODO more central place to declare these?
   (meth : ExtMethodsA m)
 
 namespace App
@@ -106,7 +115,7 @@ def mkAppEqProof? (aVars bVars : Array LocalDecl) (us vs : Array Level) (Uas Vbs
   pure fEqg?
 
 def mkAppEqProof (TLam SLam : PExpr) (TVarLams SVarLams : Array ((Array Nat) × Name × BinderInfo × PExpr)) (TEqS? : Option EExpr) (as bs : Array PExpr) (asEqbs? : Array (Option EExpr)) (f g : PExpr) (usedLets' : FVarIdSet) (fEqg? : Option EExpr := none) : m (Option EExpr) := do
-  let rec loop idx aVars bVars Uas Vbs UasEqVbs? ds? us vs : m (Option EExpr) := do
+  let rec loop (idx : Nat) aVars bVars Uas Vbs UasEqVbs? ds? us vs : m (Option EExpr) := do
     -- try
     --   let fType ← meth.inferTypePure 2071 (Lean.mkAppN f.toExpr (as[:idx].toArray.map (·.toExpr))).toPExpr -- sanity check TODO remove
     --   let .true ← meth.isDefEqPure 209 T fType | do
@@ -121,10 +130,10 @@ def mkAppEqProof (TLam SLam : PExpr) (TVarLams SVarLams : Array ((Array Nat) × 
     --   | tBody, sBody => unreachable!
 
 
-    let (aIdxs, aName, aBi, ALam) := TVarLams.get! idx
+    let (aIdxs, aName, aBi, ALam) := TVarLams[idx]!
     let A := Lean.mkAppN ALam (aIdxs.map (fun idx => as[idx]!.toExpr)) |>.toPExpr
 
-    let (bIdxs, bName, bBi, BLam) := SVarLams.get! idx
+    let (bIdxs, bName, bBi, BLam) := SVarLams[idx]!
     let B := Lean.mkAppN BLam (bIdxs.map (fun idx => bs[idx]!.toExpr)) |>.toPExpr
 
     -- let ({name := aName, dom := A, info := aBi},
@@ -483,14 +492,14 @@ def isDefEqAppOpt''' (tf sf : PExpr) (tArgs sArgs : Array PExpr)
             let pid := prevVar.1
             if type.toExpr.containsFVar' pid then
               varToIdxs := varToIdxs.insert di
-              varToIdxs := varToIdxs.union (varsToIdxs.get! di)
+              varToIdxs := varToIdxs.union (varsToIdxs[di]!)
             di := di + 1
           varsToIdxs := varsToIdxs.push varToIdxs
           i := i + 1
 
         i := 0
         for (_, n, type) in vars do
-          let varToIdx := varsToIdxs.get! i
+          let varToIdx := varsToIdxs[i]!
           let mut depVars := #[]
           let mut depVarIdxs := #[]
           let mut di := 0

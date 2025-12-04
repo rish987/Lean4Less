@@ -10,7 +10,7 @@ open Lean4Less.TypeChecker
 
 section
 
-variable [Monad m] [MonadReaderOf Context m] [MonadExcept KernelException M] (env : Kernel.Environment)
+variable [Monad m] [MonadReaderOf Context m] [MonadExcept Kernel.Exception M] (env : Kernel.Environment)
   (meth : ExtMethodsR m)
 
 def getFirstCtor (dName : Name) : Option Name := do
@@ -113,7 +113,7 @@ constructor application). The reduction is done by applying the
 `RecursorRule.rhs` associated with the constructor to the parameters from the
 recursor application and the fields of the constructor application.
 -/
-def inductiveReduceRec [Monad m] [MonadLCtx m] [MonadExcept KernelException m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Kernel.Environment) (e : PExpr) (cheapK : Bool := false)
+def inductiveReduceRec [Monad m] [MonadLCtx m] [MonadExcept Kernel.Exception m] [MonadWithReaderOf (Std.HashMap (FVarId × FVarId) FVarDataE) m] (env : Kernel.Environment) (e : PExpr) (cheapK : Bool := false)
     : m (Option (PExpr × Option EExpr)) := do
   let recFn := e.toExpr.getAppFn
   let .const recFnName ls := recFn | return none

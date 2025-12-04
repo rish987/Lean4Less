@@ -37,7 +37,7 @@ structure Context where
   safety : DefinitionSafety
   allowPrimitive : Bool
 
-abbrev M := ReaderT Context <| Except KernelException
+abbrev M := ReaderT Context <| Except Kernel.Exception
 
 def lparams : M (List Name) := do
   pure (← read).lparams
@@ -672,7 +672,7 @@ structure State where
   nextIdx : Nat := 1
   deriving Inhabited
 
-abbrev M := ReaderT Kernel.Environment <| StateT State <| Except KernelException
+abbrev M := ReaderT Kernel.Environment <| StateT State <| Except Kernel.Exception
 
 instance : MonadNameGenerator M where
   getNGen := return (← get).ngen
@@ -688,7 +688,7 @@ partial def mkUniqueName (n : Name) : M Name := fun env s =>
       pure (r, { s with nextIdx := i + 1 })
   loop s.nextIdx
 
-def illFormed : KernelException :=
+def illFormed : Kernel.Exception :=
   .other "invalid nested inductive datatype, ill-formed declaration"
 
 def replaceParams (params : Array Expr) (e : Expr) (As : Array Expr) : M Expr := do
@@ -725,7 +725,7 @@ def isNestedInductiveApp? (e : Expr) : M (Option InductiveVal) := do
   return some ci
 
 def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
-    Except KernelException Expr := do
+    Except Kernel.Exception Expr := do
   let mut e := e
   for _ in [:hi] do
     let .forallE _ _ body _ := e | throw illFormed
@@ -931,7 +931,7 @@ Lean.N.rec_1.{u} {α : Type}
 -/
 def Kernel.Environment.addInductive (env : Kernel.Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe allowPrimitive : Bool) :
-    Except KernelException Kernel.Environment := do
+    Except Kernel.Exception Kernel.Environment := do
   let res ← ElimNestedInductive.run nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
@@ -942,7 +942,7 @@ def Kernel.Environment.addInductive (env : Kernel.Environment) (lparams : List N
   let (recNames', recNameMap') := mkAuxRecNameMap env' types
   (·.2) <$> StateT.run (s := env) do
   let processRec recName := do
-    let newRecName := recNameMap'.findD recName recName
+    let newRecName := recNameMap'.find? recName |>.getD recName
     let some (.recInfo recInfo) := env'.find? recName | unreachable!
     let newRecType := res.restoreNested env' recInfo.type recNameMap'
     let newRules ← recInfo.rules.mapM fun rule => do

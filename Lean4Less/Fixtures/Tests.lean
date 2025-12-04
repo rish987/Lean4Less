@@ -236,13 +236,13 @@ abbrev gcd (m : @& Nat) : Nat :=
 --          (@instWellFoundedRelationOfSizeOf Nat instSizeOfNat)).1 :=
 --    (@invImage ((_ : Nat) ×' Nat) Nat (fun x => @PSigma.casesOn Nat (fun m => Nat) (fun _x => Nat) x fun m n => m)
 --        (@instWellFoundedRelationOfSizeOf Nat instSizeOfNat)).2
-def h1 := forall {α : Type u} {β : α -> Type v} [A : BEq.{u} α] [B : Hashable α] [C : @LawfulBEq α A] {a : α} {c : Nat}, 
-  @Eq (Option.{v} (β a)) (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
-    (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
-
-def h2 := forall {α : Type u} {β : α -> Type v} [A : BEq.{u} α] [B : Hashable α] [C : @LawfulBEq α A] {a : α} {c : Nat}, 
-  @Eq (Option.{v} (β a)) (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
-    (@Std.DHashMap.Internal.Raw₀.get?.{u, v} α β A C B (@Std.DHashMap.Internal.Raw₀.empty.{u, v} α β c) a)
+-- def h1 := forall {α : Type u} {β : α -> Type v} [A : BEq.{u} α] [B : Hashable α] [C : @LawfulBEq α A] {a : α} {c : Nat}, 
+--   @Eq (Option.{v} (β a)) (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
+--     (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
+--
+-- def h2 := forall {α : Type u} {β : α -> Type v} [A : BEq.{u} α] [B : Hashable α] [C : @LawfulBEq α A] {a : α} {c : Nat}, 
+--   @Eq (Option.{v} (β a)) (@Std.DHashMap.get?.{u, v} α β A B C (@Std.DHashMap.empty.{u, v} α β A B c) a)
+--     (@Std.DHashMap.Internal.Raw₀.get?.{u, v} α β A C B (@Std.DHashMap.Internal.Raw₀.empty.{u, v} α β c) a)
 
 -- theorem HashMapTest' {α : Type u} {β : α → Type v} [inst : BEq α] [inst_1 : Hashable α] [inst_2 : @LawfulBEq α inst] {a : α} {c : Nat} :
 --   @Eq (Option (β a)) (@Std.DHashMap.get? α β inst inst_1 inst_2 (@Std.DHashMap.empty α β inst inst_1 c) a)
@@ -280,8 +280,8 @@ set_option pp.all true
 -- #print Nat.succ_le_succ.match_1
 -- #check_off Nat.succ_le_succ.match_1
 
-theorem HashMapTest {α : Type u} {β : α → Type v} [BEq α] [Hashable α] [LawfulBEq α] {a : α}
-  {c : Nat} : (Std.DHashMap.empty c : Std.DHashMap α β).get? a = (Std.DHashMap.Internal.Raw₀.empty c).get? a := rfl
+-- theorem HashMapTest {α : Type u} {β : α → Type v} [BEq α] [Hashable α] [LawfulBEq α] {a : α}
+--   {c : Nat} : (Std.DHashMap.empty c : Std.DHashMap α β).get? a = (Std.DHashMap.Internal.Raw₀.empty c).get? a := rfl
 
 set_option pp.explicit true
 -- #print PProd

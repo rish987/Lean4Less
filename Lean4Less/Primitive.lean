@@ -124,12 +124,12 @@ def checkPrimitiveDef (env : Kernel.Environment) (v : DefinitionVal) : M Bool :=
   return true
 
 def checkPrimitiveInductive (env : Kernel.Environment) (lparams : List Name) (nparams : Nat)
-    (types : List InductiveType) (isUnsafe : Bool) (opts : TypeCheckerOpts) : Except KernelException Bool := do
+    (types : List InductiveType) (isUnsafe : Bool) (opts : TypeCheckerOpts) : Except Kernel.Exception Bool := do
   unless !isUnsafe && lparams.isEmpty && nparams == 0 do return false
   let [type] := types | return false
   let defEq (a b : Expr) := TypeChecker.isDefEqPure a.toPExpr b.toPExpr lparams
   unless type.type == .sort (.succ .zero) do return false
-  let fail {α} : Except KernelException α :=
+  let fail {α} : Except Kernel.Exception α :=
     throw <| .other s!"invalid form for primitive inductive {type.name}"
   match type.name with
   | ``Bool =>

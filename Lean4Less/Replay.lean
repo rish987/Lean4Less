@@ -10,7 +10,7 @@ namespace Lean4Less
 open Lean4Less.Kernel.Environment
 open Lean4Lean
 
-/-- Add a declaration, possibly throwing a `KernelException`. -/
+/-- Add a declaration, possibly throwing a `Kernel.Exception`. -/
 def addDecl (d : Declaration) (opts : TypeCheckerOpts := {}) : M Unit := do
   if (← read).verbose then
     println! "adding {d.name}"
@@ -26,6 +26,6 @@ def addDecl (d : Declaration) (opts : TypeCheckerOpts := {}) : M Unit := do
     | .other "translation aborted" =>
       throw $ .otherError 165846 "translation aborted"
     | _ =>
-      throwKernelException ex
+      throwKernel.Exception ex
 
 end Lean4Less
