@@ -4,7 +4,9 @@ Lean4Less is a tool for translating Lean to smaller theories (generically referr
 
 The purpose of Lean4Less is to help ease the translation of proofs from Lean to other systems (e.g. Coq), but it can hopefully also be extended to enable some limited form of (simulated) extensional reasoning in Lean, as it implements a translation framework consistent with a general extensional to intensional translation (formalized by Winterhalter et. al. in [ett-to-itt](https://github.com/TheoWinterhalter/ett-to-itt), see [this related paper](https://dl.acm.org/doi/10.1145/3293880.3294095)).
 
-(paper coming soon!)
+Paper: [Lean4Less: Eliminating Definitional Equalities from Lean via an Extensional-to-Intensional Translation](https://inria.hal.science/hal-05310102)
+
+Also, here are [some slides I presented at ICTAC 2025](https://rish987.github.io/files/lean4less_slides.pdf)
 
 ## Overview
 
