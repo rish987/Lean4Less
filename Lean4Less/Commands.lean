@@ -138,7 +138,7 @@ def constOverrides' : Array (Name × Name) := #[
 --   | .succ n, h =>
 --     match m, h with
 --     | .zero, h => absurd h (Nat.not_succ_le_zero _)
---     | .succ m, h => 
+--     | .succ m, h =>
 --       have : LE.le n m := Nat.le_of_succ_le_succ h
 --       match Nat.eq_or_lt_of_le this with
 --       | Or.inl h => Or.inl (h ▸ rfl)
@@ -159,7 +159,7 @@ def getOverrides (env : Kernel.Environment) : Std.HashMap Name ConstantInfo :=
 
 def transL4L' (ns : Array Name) (env : Kernel.Environment) (pp := false) (printProgress := false) (interactive := false) (opts : TypeCheckerOpts := {}) (dbgOnly := false) : IO Environment := do
   let map := ns.foldl (init := default) fun acc n => .insert acc n
-  let (_, newEnv) ← checkConstants (printErr := true) (Environment.ofKernelEnv env) map (@Lean4Less.addDecl (opts := opts)) (initConsts := patchConsts) (op := "patch") (printProgress := printProgress) (interactive := interactive) (overrides := getOverrides env) (dbgOnly := dbgOnly)
+  let (_, newEnv) ← checkConstants (printErr := true) (Environment.ofKernelEnv env.toMap₁) map (@Lean4Less.addDecl (opts := opts)) (initConsts := patchConsts) (op := "patch") (printProgress := printProgress) (interactive := interactive) (overrides := getOverrides env) (dbgOnly := dbgOnly)
   for n in ns do
     if pp then
       ppConst newEnv.toKernelEnv n
